@@ -58,6 +58,11 @@ export class UI {
     this.label = document.getElementById('float-label');
     this.btnMath = document.getElementById('btn-math');
     this.btnWhy = document.getElementById('btn-why');
+    this.uiToggle = document.getElementById('ui-toggle');
+    this.brand = document.getElementById('brand');
+    this.brandToggle = document.getElementById('brand-toggle');
+    this.controlsPanel = document.getElementById('controls');
+    this.controlsToggle = document.getElementById('controls-toggle');
 
     this.constants.textContent = CONSTANTS_NOTE;
     this.renderExplain();
@@ -73,7 +78,35 @@ export class UI {
     this.btnWhy.setAttribute('aria-expanded', this.explain.classList.contains('open') ? 'true' : 'false');
     if (window.matchMedia('(pointer: coarse)').matches) {
       const hint = document.getElementById('hint');
-      hint.textContent = 'Tap a body to inspect · tap the sheet to add a mass · hold, then drag to move · hold still to remove · one finger orbits · pinch zooms · two fingers pan';
+      hint.textContent = 'Tap to inspect or add · hold to drag or remove · pinch to zoom · double-tap empty space hides the interface';
+    }
+    this.restoreHud();
+  }
+
+  restoreHud() {
+    let hidden = false;
+    try {
+      hidden = localStorage.getItem('spacetime-hud') === 'hidden';
+    } catch {
+      hidden = false;
+    }
+    this.setHudHidden(hidden, false);
+  }
+
+  toggleHud() {
+    this.setHudHidden(!document.documentElement.classList.contains('hud-hidden'));
+  }
+
+  setHudHidden(hidden, persist = true) {
+    document.documentElement.classList.toggle('hud-hidden', hidden);
+    document.body.classList.toggle('hud-hidden', hidden);
+    this.uiToggle.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    this.uiToggle.setAttribute('aria-label', hidden ? 'Show interface' : 'Hide interface');
+    if (!persist) return;
+    try {
+      localStorage.setItem('spacetime-hud', hidden ? 'hidden' : 'shown');
+    } catch {
+      /* private mode */
     }
   }
 
@@ -144,6 +177,15 @@ export class UI {
       this.pause.textContent = this.state.paused ? 'Resume' : 'Pause';
     });
     document.getElementById('reset').addEventListener('click', () => this.handlers.onReset());
+    this.uiToggle.addEventListener('click', () => this.toggleHud());
+    this.brandToggle.addEventListener('click', () => {
+      const collapsed = this.brand.classList.toggle('collapsed');
+      this.brandToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+    this.controlsToggle.addEventListener('click', () => {
+      const collapsed = this.controlsPanel.classList.toggle('collapsed');
+      this.controlsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
     this.btnMath.addEventListener('click', () => {
       this.math.classList.toggle('open');
       this.explain.classList.remove('open');

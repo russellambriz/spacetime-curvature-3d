@@ -244,11 +244,30 @@ function endDrag(event) {
     ui.refreshSelection();
     return;
   }
-  const hit = world.pickSheet(event.clientX, event.clientY);
-  if (!hit) return;
-  const result = addBody(state, hit.x, hit.z);
-  if (!result.ok) ui.toast(result.reason);
-  else ui.refreshSelection();
+  queueEmptyTap(event.clientX, event.clientY);
+}
+
+let lastEmptyTap = 0;
+let emptyTapTimer = 0;
+
+function queueEmptyTap(x, y) {
+  const now = performance.now();
+  if (now - lastEmptyTap < 320) {
+    window.clearTimeout(emptyTapTimer);
+    emptyTapTimer = 0;
+    lastEmptyTap = 0;
+    ui.toggleHud();
+    return;
+  }
+  lastEmptyTap = now;
+  emptyTapTimer = window.setTimeout(() => {
+    emptyTapTimer = 0;
+    const hit = world.pickSheet(x, y);
+    if (!hit) return;
+    const result = addBody(state, hit.x, hit.z);
+    if (!result.ok) ui.toast(result.reason);
+    else ui.refreshSelection();
+  }, 280);
 }
 
 window.addEventListener('pointerup', endDrag);
@@ -282,6 +301,8 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === 't' || event.key === 'T') {
     state.showTrails = !state.showTrails;
     ui.trails.setAttribute('aria-pressed', state.showTrails ? 'true' : 'false');
+  } else if (event.key === 'h' || event.key === 'H') {
+    ui.toggleHud();
   } else if (event.key === 'r' || event.key === 'R') {
     document.getElementById('reset').click();
   } else if (event.key >= '1' && event.key <= '4') {

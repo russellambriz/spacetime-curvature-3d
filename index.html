@@ -12,6 +12,13 @@
       content="An interactive embedding diagram of curved spacetime. Watch stars and planets bend a neon grid, and read the live gravity math."
     />
     <title>Spacetime — embedding diagram</title>
+    <script>
+      try {
+        if (localStorage.getItem('spacetime-hud') === 'hidden') {
+          document.documentElement.classList.add('hud-hidden');
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,16 +31,40 @@
     <canvas id="scene" aria-label="Three-dimensional embedding diagram of curved spacetime"></canvas>
     <div id="vignette" aria-hidden="true"></div>
     <div id="hud">
+      <button id="ui-toggle" type="button" aria-pressed="false" aria-label="Hide interface">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <g class="eye-open" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2.5 12S6.2 6.5 12 6.5 21.5 12 21.5 12 17.8 17.5 12 17.5 2.5 12 2.5 12Z" />
+            <circle cx="12" cy="12" r="2.4" />
+          </g>
+          <g class="eye-shut" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 5.5 20 19" />
+            <path d="M9.2 6.9A10 10 0 0 1 12 6.5c5.8 0 9.5 5.5 9.5 5.5a18 18 0 0 1-3.2 3.4" />
+            <path d="M6.1 8.2C4 9.7 2.5 12 2.5 12S6.2 17.5 12 17.5c1.1 0 2.1-.2 3.1-.5" />
+            <path d="M10.2 10.4a2.4 2.4 0 0 0 3.3 3.3" />
+          </g>
+        </svg>
+      </button>
       <header id="top">
         <div id="brand">
-          <p class="kicker">Embedding diagram</p>
-          <h1>Spacetime</h1>
-          <p id="tagline">A star and a planet on a shared curved sheet.</p>
+          <button id="brand-toggle" type="button" aria-expanded="true" aria-controls="brand-copy">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span class="mini-title">Spacetime</span>
+          </button>
+          <div id="brand-copy">
+            <p class="kicker">Embedding diagram</p>
+            <h1>Spacetime</h1>
+            <p id="tagline">A star and a planet on a shared curved sheet.</p>
+          </div>
         </div>
-        <nav id="presets" aria-label="Presets"></nav>
-        <div id="top-toggles">
-          <button id="btn-math" type="button" aria-expanded="false">Math</button>
-          <button id="btn-why" type="button" aria-expanded="false">Why</button>
+        <div id="nav-row">
+          <nav id="presets" aria-label="Presets"></nav>
+          <div id="top-toggles">
+            <button id="btn-math" type="button" aria-expanded="false">Math</button>
+            <button id="btn-why" type="button" aria-expanded="false">Why</button>
+          </div>
         </div>
       </header>
 
@@ -56,6 +87,11 @@
       <div id="toast" role="status"></div>
 
       <footer id="controls" class="panel">
+        <button id="controls-toggle" type="button" aria-expanded="true" aria-controls="controls-body">
+          <span class="grip" aria-hidden="true"></span>
+          <span>Controls</span>
+        </button>
+        <div id="controls-body">
         <div class="control-row">
           <label class="slider">
             <span>Time <strong id="time-read">1.00×</strong></span>
@@ -74,8 +110,9 @@
         <p id="hint">
           Click a body to inspect · drag to move it · click the sheet to add a mass · right-click to remove
           · trackpad pinch zooms · two-finger scroll pans
-          · <kbd>1</kbd>–<kbd>4</kbd> presets · <kbd>Space</kbd> pause · <kbd>T</kbd> trails
+          · <kbd>1</kbd>–<kbd>4</kbd> presets · <kbd>Space</kbd> pause · <kbd>T</kbd> trails · <kbd>H</kbd> hide interface
         </p>
+        </div>
       </footer>
     </div>
     <div id="loader">Curving spacetime</div>

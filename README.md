@@ -32,7 +32,8 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap a body to inspect it. On a Mac, drag a body to move it. On iPad, press and hold, then drag; release a hold without moving to remove it.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
-- Keys: `1`–`4` presets, `Space` pause, `T` trails, `R` reset.
+- The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
+- Keys: `1`–`4` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
 
 ## Presets
 
