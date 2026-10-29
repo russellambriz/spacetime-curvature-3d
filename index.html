@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="An interactive embedding diagram of curved spacetime. Watch stars and planets bend a neon grid, and read the live gravity math."
+    />
+    <title>Spacetime — embedding diagram</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="Three-dimensional embedding diagram of curved spacetime"></canvas>
+    <div id="vignette" aria-hidden="true"></div>
+    <div id="hud">
+      <header id="top">
+        <div id="brand">
+          <p class="kicker">Embedding diagram</p>
+          <h1>Spacetime</h1>
+          <p id="tagline">A star and a planet on a shared curved sheet.</p>
+        </div>
+        <nav id="presets" aria-label="Presets"></nav>
+        <div id="top-toggles">
+          <button id="btn-math" type="button" aria-expanded="false">Math</button>
+          <button id="btn-why" type="button" aria-expanded="false">Why</button>
+        </div>
+      </header>
+
+      <aside id="explain" class="panel">
+        <h2>How curvature works</h2>
+        <div id="explain-body"></div>
+      </aside>
+
+      <aside id="math" class="panel" aria-live="polite">
+        <p class="kicker" id="body-kind">Planet</p>
+        <h2 id="body-name">Earth</h2>
+        <p id="body-sub"></p>
+        <div id="body-stats"></div>
+        <div id="formulas"></div>
+        <p id="motion"></p>
+        <p id="constants-note" class="fine"></p>
+      </aside>
+
+      <div id="float-label" hidden></div>
+      <div id="toast" role="status"></div>
+
+      <footer id="controls" class="panel">
+        <div class="control-row">
+          <label class="slider">
+            <span>Time <strong id="time-read">1.00×</strong></span>
+            <input id="time" type="range" min="0" max="800" value="100" aria-valuemin="0" aria-valuemax="8" aria-label="Time speed" />
+          </label>
+          <label class="slider">
+            <span><span id="mass-name">Earth mass</span> <strong id="mass-read">1.00 M⊕</strong></span>
+            <input id="mass" type="range" min="0" max="1000" value="525" aria-label="Selected mass" />
+          </label>
+          <div class="buttons">
+            <button id="trails" type="button" aria-pressed="true">Trails</button>
+            <button id="pause" type="button" aria-pressed="false">Pause</button>
+            <button id="reset" type="button">Reset</button>
+          </div>
+        </div>
+        <p id="hint">
+          Click a body to inspect · drag to move it · click the sheet to add a mass · right-click to remove
+          · <kbd>1</kbd>–<kbd>4</kbd> presets · <kbd>Space</kbd> pause · <kbd>T</kbd> trails · scroll to orbit
+        </p>
+      </footer>
+    </div>
+    <div id="loader">Curving spacetime</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
