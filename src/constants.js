@@ -14,9 +14,19 @@ export const R_MARS = 3.3895e6;
 export const AU = 1.495978707e11;
 
 export const MAX_BODIES = 12;
-export const GRID_SIZE = 100;
-export const GRID_SEGMENTS_DESKTOP = 200;
-export const GRID_SEGMENTS_MOBILE = 110;
+export const GRID_SIZE = 460;
+export const GRID_SEGMENTS_DESKTOP = 240;
+export const GRID_SEGMENTS_TABLET = 168;
+export const GRID_SEGMENTS_MOBILE = 112;
+
+export function choosePixelRatio() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  const budget = 5.2e6;
+  if (w * h * dpr * dpr <= budget) return dpr;
+  return Math.max(1, Math.min(dpr, Math.sqrt(budget / (w * h))));
+}
 
 export function schwarzschildRadius(massKg) {
   return (2 * G * massKg) / (C * C);

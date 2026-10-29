@@ -16,18 +16,27 @@
 html, body {
   margin: 0;
   height: 100%;
+  height: 100dvh;
   background: var(--bg);
   color: var(--ink);
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
-button, input { font: inherit; color: inherit; }
+button, input { font: inherit; color: inherit; touch-action: manipulation; }
+button, label { -webkit-tap-highlight-color: transparent; }
 
 canvas {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   display: block;
   cursor: grab;
   touch-action: none;
@@ -96,9 +105,9 @@ h2 {
 
 #top {
   position: absolute;
-  top: 18px;
-  left: 18px;
-  right: 406px;
+  top: calc(18px + env(safe-area-inset-top));
+  left: calc(18px + env(safe-area-inset-left));
+  right: min(420px, 38vw);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -147,7 +156,7 @@ button:focus-visible, input:focus-visible {
 }
 
 #top-toggles {
-  display: none;
+  display: flex;
   gap: 8px;
 }
 
@@ -176,13 +185,15 @@ button:focus-visible, input:focus-visible {
 }
 
 #explain {
+  display: none;
   position: absolute;
-  left: 18px;
-  bottom: 124px;
-  width: min(400px, calc(100vw - 430px));
-  max-height: min(320px, calc(100vh - 300px));
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(124px + env(safe-area-inset-bottom));
+  width: min(400px, calc(100vw - 460px));
+  max-height: min(340px, calc(100dvh - 320px));
   overflow: auto;
   padding: 16px 16px 14px;
+  -webkit-overflow-scrolling: touch;
 }
 
 #explain h2 { margin-bottom: 8px; }
@@ -197,14 +208,19 @@ button:focus-visible, input:focus-visible {
 .explain-tex { margin: 4px 0 10px; overflow-x: auto; }
 
 #math {
+  display: none;
   position: absolute;
-  top: 16px;
-  right: 16px;
-  width: min(372px, calc(100vw - 32px));
-  max-height: calc(100vh - 138px);
+  top: calc(16px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
+  width: min(372px, 34vw);
+  max-height: calc(100dvh - 150px - env(safe-area-inset-bottom));
   overflow: auto;
   padding: 16px 16px 12px;
+  -webkit-overflow-scrolling: touch;
 }
+
+#explain.open,
+#math.open { display: block; }
 
 #body-name {
   font-size: 28px;
@@ -296,9 +312,9 @@ button:focus-visible, input:focus-visible {
 
 #controls {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 14px;
+  left: calc(16px + env(safe-area-inset-left));
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
   padding: 12px 14px 10px;
 }
 
@@ -453,31 +469,54 @@ kbd {
 
 .katex { color: inherit; font-size: 1.02em; }
 
-@media (max-width: 1080px) {
-  #top { right: 18px; }
+@media (max-width: 1279px), (max-height: 779px) {
+  #top { right: calc(16px + env(safe-area-inset-right)); }
   h1 { font-size: 38px; }
-  #explain { display: none; }
-  #math { display: none; }
-  #top-toggles { display: flex; }
-  #explain.open, #math.open {
-    display: block;
-    left: 12px;
-    right: 12px;
-    top: 148px;
+  #math.open {
+    top: calc(112px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
+    left: auto;
+    width: min(380px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: calc(100dvh - 240px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    z-index: 5;
+  }
+  #explain.open {
+    top: calc(112px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
+    right: auto;
     bottom: auto;
-    width: auto;
-    max-height: min(58vh, calc(100vh - 230px));
+    width: min(400px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: calc(100dvh - 240px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     z-index: 5;
   }
 }
 
-@media (max-width: 720px) {
+@media (orientation: portrait) and (max-width: 1100px) {
+  #math.open,
+  #explain.open {
+    left: calc(10px + env(safe-area-inset-left));
+    right: calc(10px + env(safe-area-inset-right));
+    width: auto;
+    top: calc(124px + env(safe-area-inset-top));
+    max-height: min(52dvh, calc(100dvh - 250px));
+  }
+}
+
+@media (max-width: 1280px) {
+  #hint { display: none; }
+}
+
+@media (max-width: 820px) {
   h1 { font-size: 32px; }
-  #top { top: 12px; left: 12px; gap: 10px; }
+  #top {
+    top: calc(12px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
+    gap: 10px;
+  }
   #presets {
     flex-wrap: nowrap;
     overflow-x: auto;
-    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
     padding-bottom: 2px;
   }
   button.preset { flex: 0 0 auto; }
@@ -486,8 +525,27 @@ kbd {
   .buttons { width: 100%; }
   .buttons button { flex: 1; }
   #hint { display: none; }
-  #controls { left: 10px; right: 10px; bottom: 10px; }
-  #explain.open, #math.open { top: 132px; }
+  #controls {
+    left: calc(10px + env(safe-area-inset-left));
+    right: calc(10px + env(safe-area-inset-right));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (pointer: coarse) {
+  button.preset,
+  .buttons button,
+  #top-toggles button {
+    min-height: 44px;
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+  input[type="range"] { height: 36px; }
+  input[type="range"]::-webkit-slider-thumb,
+  input[type="range"]::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

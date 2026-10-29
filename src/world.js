@@ -4,10 +4,17 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { GRID_SEGMENTS_DESKTOP, GRID_SEGMENTS_MOBILE, GRID_SIZE, MAX_BODIES } from './constants.js';
+import {
+  choosePixelRatio,
+  GRID_SEGMENTS_DESKTOP,
+  GRID_SEGMENTS_MOBILE,
+  GRID_SEGMENTS_TABLET,
+  GRID_SIZE,
+  MAX_BODIES,
+} from './constants.js';
 import { heightAt } from './height.js';
 
-const GRID_CELL = 1.72;
+const GRID_CELL = 2.15;
 const STYLE_ID = { generic: 0, mercury: 1, venus: 2, earth: 3, mars: 4 };
 
 const NOISE = /* glsl */ `
@@ -27,6 +34,16 @@ float noise(vec3 p) {
         mix(hash13(i + vec3(0.0, 1.0, 1.0)), hash13(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
     f.z);
 }
+float fbm(vec3 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p = p * 2.02 + vec3(1.7, 9.2, 3.1);
+    a *= 0.5;
+  }
+  return v;
+}
 `;
 
 const SHEET_VERT = /* glsl */ `
@@ -35,6 +52,7 @@ uniform vec4 uExtra[${MAX_BODIES}];
 varying vec2 vGrid;
 varying float vHeight;
 varying float vBh;
+varying vec3 vWorld;
 
 float flammHeight(float r, float rs, float depthScale) {
   float R0 = rs * 14.0;
@@ -76,8 +94,9 @@ void main() {
   float h = sheetHeight(pos.xz);
   vHeight = h;
   pos.y = h;
-  vec4 world = modelMatrix * vec4(pos, 1.0);
-  gl_Position = projectionMatrix * viewMatrix * world;
+  vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+  vWorld = worldPos.xyz;
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
@@ -85,26 +104,34 @@ const SHEET_FRAG = /* glsl */ `
 varying vec2 vGrid;
 varying float vHeight;
 varying float vBh;
+varying vec3 vWorld;
 uniform float uHalf;
 uniform float uCell;
 
 void main() {
+  vec2 fw = max(fwidth(vGrid), vec2(0.0001));
+  float density = max(fw.x, fw.y) / uCell;
   vec2 coord = vGrid / uCell;
-  vec2 fw = max(fwidth(coord), vec2(0.0001));
   vec2 g = abs(fract(coord - 0.5) - 0.5);
-  float minor = max(1.0 - smoothstep(0.0, fw.x * 1.2, g.x), 1.0 - smoothstep(0.0, fw.y * 1.2, g.y));
-  vec2 coordM = coord / 4.0;
-  vec2 fwM = max(fwidth(coordM), vec2(0.0001));
-  vec2 gm = abs(fract(coordM - 0.5) - 0.5);
-  float major = max(1.0 - smoothstep(0.0, fwM.x * 1.05, gm.x), 1.0 - smoothstep(0.0, fwM.y * 1.05, gm.y));
-  float line = clamp(minor * 0.62 + major * 0.95, 0.0, 1.35);
-  float radial = 1.0 - smoothstep(uHalf * 0.58, uHalf * 0.98, length(vGrid));
-  float slope = clamp(-vHeight / 26.0, 0.0, 1.15);
-  vec3 green = vec3(0.16, 1.12, 0.36);
-  vec3 magenta = vec3(1.15, 0.32, 0.9);
+  float wx = min(max(fw.x / uCell, 0.0015) * 1.2, 0.048);
+  float wy = min(max(fw.y / uCell, 0.0015) * 1.2, 0.048);
+  float minor = max(1.0 - smoothstep(0.0, wx, g.x), 1.0 - smoothstep(0.0, wy, g.y));
+  vec2 gm = abs(fract(coord / 5.0 - 0.5) - 0.5);
+  float mx = max(wx * 0.85, 0.004);
+  float my = max(wy * 0.85, 0.004);
+  float major = max(1.0 - smoothstep(0.0, max(mx, 0.001), gm.x), 1.0 - smoothstep(0.0, max(my, 0.001), gm.y));
+  float alias = 1.0 - smoothstep(0.2, 0.46, density);
+  float aliasMajor = 1.0 - smoothstep(0.42, 0.82, density);
+  float line = minor * 0.72 * alias + major * aliasMajor;
+  float radial = 1.0 - smoothstep(uHalf * 0.38, uHalf * 0.97, length(vGrid));
+  float distFade = 1.0 - smoothstep(70.0, 250.0, length(vWorld - cameraPosition));
+  float fade = radial * distFade;
+  float slope = clamp(-vHeight / 24.0, 0.0, 1.0);
+  vec3 green = vec3(0.14, 1.08, 0.36);
+  vec3 magenta = vec3(1.15, 0.3, 0.88);
   vec3 col = mix(green, magenta, clamp(vBh, 0.0, 1.0));
-  col *= line * radial * (0.78 + slope * 0.95);
-  if (line * radial < 0.035) discard;
+  col *= line * fade * (0.7 + slope * 0.65);
+  if (line * fade < 0.028) discard;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -126,16 +153,32 @@ function makeGlowTexture() {
   return texture;
 }
 
+function warpAxis(t) {
+  const sign = Math.sign(t) || 1;
+  return sign * Math.abs(t) ** 1.7;
+}
+
+function gridSegmentsForViewport() {
+  const width = window.innerWidth;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  if (width < 760) return GRID_SEGMENTS_MOBILE;
+  if (coarse || width < 1280) return GRID_SEGMENTS_TABLET;
+  return GRID_SEGMENTS_DESKTOP;
+}
+
 function sheetGeometry(size, segments) {
   const geo = new THREE.BufferGeometry();
   const n = segments + 1;
   const positions = new Float32Array(n * n * 3);
   let p = 0;
+  const half = size / 2;
   for (let j = 0; j < n; j += 1) {
+    const z = warpAxis(-1 + (2 * j) / segments) * half;
     for (let i = 0; i < n; i += 1) {
-      positions[p] = -size / 2 + (i / segments) * size;
+      const x = warpAxis(-1 + (2 * i) / segments) * half;
+      positions[p] = x;
       positions[p + 1] = 0;
-      positions[p + 2] = -size / 2 + (j / segments) * size;
+      positions[p + 2] = z;
       p += 3;
     }
   }
@@ -361,29 +404,43 @@ export class World {
     renderer.setClearColor(0x000000, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    renderer.setPixelRatio(choosePixelRatio());
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(40, 1, 0.08, 900);
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.08, 2800);
     this.camera.position.set(24, 18, 28);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.065;
-    this.controls.minDistance = 5;
-    this.controls.maxDistance = 95;
+    this.controls.dampingFactor = 0.08;
+    this.controls.minDistance = 6;
+    this.controls.maxDistance = 220;
     this.controls.maxPolarAngle = Math.PI * 0.965;
-    this.controls.minPolarAngle = 0.06;
-    this.controls.zoomSpeed = 0.72;
-    this.controls.rotateSpeed = 0.72;
+    this.controls.minPolarAngle = 0.08;
+    this.controls.zoomSpeed = 0.85;
+    this.controls.rotateSpeed = 0.7;
+    this.controls.panSpeed = 0.85;
+    this.controls.screenSpacePanning = true;
+    this.controls.enablePan = true;
+    this.controls.touches.ONE = THREE.TOUCH.ROTATE;
+    this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
     this.controls.mouseButtons.RIGHT = null;
     this.controls.target.set(0, -2, 0);
     this.controls.addEventListener('start', () => {
       this.intro = null;
     });
+    canvas.addEventListener('wheel', (event) => {
+      if (!this.controls.enabled) return;
+      if (event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.intro = null;
+      this.controls._pan(event.deltaX * 0.9, event.deltaY * 0.9);
+    }, { passive: false, capture: true });
 
     this.glowTexture = makeGlowTexture();
-    this.sphere = new THREE.SphereGeometry(1, 64, 48);
+    this.sphere = new THREE.SphereGeometry(1, 72, 56);
+    this._buildShellMaterials();
     this._buildStars();
     this._buildSheet();
     this._buildBlackHoleExtras();
@@ -395,7 +452,7 @@ export class World {
   _buildComposer() {
     const target = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType,
-      samples: 2,
+      samples: 0,
     });
     this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -404,13 +461,77 @@ export class World {
     this.composer.addPass(new OutputPass());
   }
 
+  _buildShellMaterials() {
+    const shellVert = /* glsl */ `
+      varying vec3 vObj;
+      varying vec3 vWorld;
+      varying vec3 vNormal;
+      void main() {
+        vObj = position;
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }
+    `;
+    this.coronaMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.FrontSide,
+      vertexShader: shellVert,
+      fragmentShader: /* glsl */ `
+        varying vec3 vWorld;
+        varying vec3 vNormal;
+        void main() {
+          vec3 N = normalize(vNormal);
+          vec3 V = normalize(cameraPosition - vWorld);
+          float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 1.55);
+          vec3 col = vec3(1.0, 0.42, 0.08) * fres * 0.7 + vec3(1.0, 0.78, 0.4) * pow(fres, 4.0) * 0.45;
+          if (fres < 0.04) discard;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+    this.cloudMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: this.timeUniform,
+        uLightA: this.lightA,
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      toneMapped: false,
+      vertexShader: shellVert,
+      fragmentShader: /* glsl */ `
+        ${NOISE}
+        varying vec3 vObj;
+        varying vec3 vWorld;
+        varying vec3 vNormal;
+        uniform float uTime;
+        uniform vec3 uLightA;
+        void main() {
+          float n = fbm(vObj * 3.6 + vec3(uTime * 0.012, 0.2, uTime * 0.008));
+          float cloud = smoothstep(0.42, 0.66, n);
+          vec3 N = normalize(vNormal);
+          vec3 L = normalize(uLightA - vWorld);
+          float ndl = clamp(dot(N, L), 0.0, 1.0);
+          vec3 col = vec3(0.82, 0.9, 0.98) * (0.22 + 0.95 * ndl);
+          if (cloud < 0.05) discard;
+          gl_FragColor = vec4(col, cloud * 0.88);
+        }
+      `,
+    });
+  }
+
   _buildStars() {
     const count = 1800;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     for (let i = 0; i < count; i += 1) {
-      const radius = 170 + Math.random() * 360;
+      const radius = 820 + Math.random() * 520;
       const theta = Math.acos(2 * Math.random() - 1);
       const phi = Math.random() * Math.PI * 2;
       positions[i * 3] = radius * Math.sin(theta) * Math.cos(phi);
@@ -447,7 +568,7 @@ export class World {
           vColor = aColor;
           vTw = 0.8 + 0.2 * sin(uTime * 0.65 + position.x * 0.11 + position.z * 0.05);
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = aSize * vTw * (260.0 / max(1.0, -mv.z));
+          gl_PointSize = aSize * vTw * (520.0 / max(1.0, -mv.z));
           gl_Position = projectionMatrix * mv;
         }
       `,
@@ -469,8 +590,7 @@ export class World {
   }
 
   _buildSheet() {
-    const mobile = window.matchMedia('(max-width: 800px)').matches;
-    const segments = mobile ? GRID_SEGMENTS_MOBILE : GRID_SEGMENTS_DESKTOP;
+    const segments = gridSegmentsForViewport();
     const geo = sheetGeometry(GRID_SIZE, segments);
     this.sheetMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -511,25 +631,31 @@ export class World {
         }
       `,
       fragmentShader: /* glsl */ `
+        ${NOISE}
         varying vec2 vLocal;
         uniform float uTime;
         void main() {
           float r = length(vLocal);
           float ang = atan(vLocal.y, vLocal.x);
-          float spin = ang - uTime * 1.25;
-          float bands = 0.6 + 0.4 * sin(spin * 9.0 + r * 3.4);
-          float radial = smoothstep(1.62, 1.92, r) * smoothstep(4.75, 3.15, r);
-          vec3 hot = vec3(1.15, 0.42, 0.1);
-          vec3 mag = vec3(0.95, 0.14, 0.62);
-          vec3 col = mix(hot, mag, 0.5 + 0.5 * sin(spin * 2.0 + r)) * bands;
-          col *= 0.55 + 0.6 * smoothstep(-0.15, 1.0, vLocal.x / max(r, 0.001));
-          col += vec3(1.0, 0.45, 0.75) * (1.0 - smoothstep(1.85, 2.35, r)) * radial * 0.45;
-          if (radial < 0.03) discard;
+          float spin = ang * 2.4 - uTime * 1.5 - r * 0.65;
+          float turb = fbm(vec3(cos(spin) * 1.4, sin(spin) * 1.4, r * 0.85 + uTime * 0.05));
+          float radial = smoothstep(1.52, 1.82, r) * smoothstep(5.35, 3.15, r);
+          float t = smoothstep(1.7, 4.8, r);
+          vec3 hot = vec3(1.4, 0.78, 0.32);
+          vec3 mid = vec3(1.05, 0.32, 0.08);
+          vec3 mag = vec3(0.78, 0.1, 0.48);
+          vec3 col = mix(hot, mix(mid, mag, smoothstep(0.35, 1.0, t)), t);
+          col *= 0.55 + 0.85 * turb;
+          float doppler = 0.5 + 0.95 * smoothstep(-1.0, 1.0, vLocal.x / max(r, 0.001));
+          col *= doppler;
+          float inner = exp(-pow((r - 1.72) * 1.55, 2.0));
+          col += vec3(1.25, 0.92, 0.72) * inner * 1.35;
+          if (radial < 0.025) discard;
           gl_FragColor = vec4(col * radial, 1.0);
         }
       `,
     });
-    this.disk = new THREE.Mesh(new THREE.RingGeometry(1.7, 4.65, 160, 8), this.diskMat);
+    this.disk = new THREE.Mesh(new THREE.RingGeometry(1.55, 5.2, 192, 10), this.diskMat);
     this.disk.rotation.x = -Math.PI / 2 + 0.32;
     this.disk.renderOrder = 2;
     this.disk.frustumCulled = false;
@@ -558,19 +684,51 @@ export class World {
         varying vec3 vW;
         void main() {
           vec3 V = normalize(cameraPosition - vW);
-          float fres = pow(1.0 - abs(dot(normalize(vN), V)), 1.15);
-          vec3 col = vec3(1.15, 0.28, 0.95) * (0.4 + fres);
+          float rim = pow(1.0 - abs(dot(normalize(vN), V)), 2.4);
+          vec3 col = vec3(1.45, 0.78, 1.15) * (0.35 + rim * 1.8);
           gl_FragColor = vec4(col, 1.0);
         }
       `,
     });
-    this.photon = new THREE.Mesh(new THREE.TorusGeometry(1, 0.022, 12, 96), this.photonMat);
+    this.photon = new THREE.Mesh(new THREE.TorusGeometry(1, 0.011, 16, 128), this.photonMat);
     this.photon.rotation.x = Math.PI / 2;
     this.photon.renderOrder = 2;
     this.photon.frustumCulled = false;
     this.photon.raycast = () => {};
     this.photon.visible = false;
     this.scene.add(this.photon);
+
+    this.sharpMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+      vertexShader: /* glsl */ `
+        varying vec2 vLocal;
+        void main() {
+          vLocal = position.xy;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vLocal;
+        void main() {
+          float r = length(vLocal);
+          float line = exp(-pow((r - 1.0) * 36.0, 2.0));
+          vec3 col = vec3(1.35, 0.9, 1.2) * line * 1.8;
+          if (line < 0.04) discard;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+    this.sharpRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 160), this.sharpMat);
+    this.sharpRing.rotation.x = -Math.PI / 2;
+    this.sharpRing.renderOrder = 3;
+    this.sharpRing.frustumCulled = false;
+    this.sharpRing.raycast = () => {};
+    this.sharpRing.visible = false;
+    this.scene.add(this.sharpRing);
 
     this.tube = buildTube();
     this.scene.add(this.tube);
@@ -626,10 +784,13 @@ export class World {
           vec3 N = normalize(vNormal);
           vec3 V = normalize(cameraPosition - vWorld);
           float ndv = clamp(dot(N, V), 0.0, 1.0);
-          vec3 col = mix(uLimb, uCore, pow(ndv, 0.48));
-          float n = noise(vObj * 4.6 + vec3(uTime * 0.11, uTime * 0.04, 0.2));
-          col *= 0.86 + 0.22 * n;
-          col += uCore * pow(n, 4.0) * 0.16;
+          float g1 = fbm(vObj * 3.3 + vec3(uTime * 0.04, uTime * 0.017, 0.4));
+          float g2 = fbm(vObj * 8.2 - vec3(uTime * 0.06, 0.3, uTime * 0.025));
+          float cells = smoothstep(0.3, 0.78, g1);
+          vec3 col = mix(uLimb * 0.9, uCore, pow(ndv, 0.52));
+          col *= 0.72 + 0.42 * cells;
+          col += vec3(1.15, 0.62, 0.22) * pow(g2, 4.0) * 0.5;
+          col += uLimb * pow(1.0 - ndv, 1.7) * 0.62;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -645,6 +806,7 @@ export class World {
         uLightA: this.lightA,
         uLightB: this.lightB,
         uUseB: this.useB,
+        uTime: this.timeUniform,
       },
       toneMapped: false,
       vertexShader: /* glsl */ `
@@ -670,53 +832,68 @@ export class World {
         uniform vec3 uLightA;
         uniform vec3 uLightB;
         uniform float uUseB;
+        uniform float uTime;
         void main() {
           vec3 N = normalize(vNormal);
           vec3 V = normalize(cameraPosition - vWorld);
           vec3 La = normalize(uLightA - vWorld);
           float ndl = clamp(dot(N, La), 0.0, 1.0);
+          float wrap = clamp(dot(N, La) * 0.62 + 0.38, 0.0, 1.0);
           vec3 albedo = uAlbedo;
           float atmo = 0.8;
+          float ocean = 0.0;
           if (uStyle > 0.5 && uStyle < 1.5) {
-            float n = noise(vObj * 6.0);
-            float crater = smoothstep(0.73, 0.88, noise(vObj * 15.0));
-            albedo = vec3(0.48, 0.43, 0.36) * (0.72 + 0.45 * n) * (1.0 - 0.5 * crater);
+            float n = fbm(vObj * 5.2);
+            float crater = smoothstep(0.6, 0.8, noise(vObj * 12.0));
+            float rays = smoothstep(0.76, 0.93, noise(vObj * 19.0));
+            albedo = vec3(0.58, 0.52, 0.46) * (0.62 + 0.55 * n);
+            albedo *= 1.0 - 0.58 * crater;
+            albedo += vec3(0.78, 0.72, 0.62) * rays * 0.4;
             atmo = 0.0;
           } else if (uStyle > 1.5 && uStyle < 2.5) {
-            float n = noise(vObj * 2.4 + 3.0);
-            albedo = mix(vec3(0.72, 0.55, 0.28), vec3(0.98, 0.88, 0.62), n);
-            atmo = 1.35;
-          } else if (uStyle < 3.5) {
-            float n = noise(vObj * 3.15);
-            float n2 = noise(vObj * 8.0);
-            float land = smoothstep(0.5, 0.64, n);
-            vec3 ocean = mix(vec3(0.02, 0.12, 0.36), vec3(0.08, 0.4, 0.68), ndl);
-            vec3 ground = mix(vec3(0.14, 0.4, 0.18), vec3(0.46, 0.38, 0.2), smoothstep(0.5, 0.82, n2));
-            albedo = mix(ocean, ground, land);
-            float pole = smoothstep(0.64, 0.9, abs(vObj.y));
-            albedo = mix(albedo, vec3(0.86, 0.92, 0.97), pole);
-            float cities = pow(noise(vObj * 22.0), 8.0) * land * (1.0 - smoothstep(0.0, 0.18, ndl));
-            albedo += vec3(1.0, 0.78, 0.4) * cities * 0.7;
-            atmo = 0.95;
-          } else if (uStyle < 4.5) {
-            float n = noise(vObj * 3.5);
-            albedo = mix(vec3(0.45, 0.16, 0.08), vec3(0.75, 0.32, 0.16), n);
-            float cap = smoothstep(0.74, 0.93, abs(vObj.y));
-            albedo = mix(albedo, vec3(0.92, 0.94, 0.96), cap);
-            atmo = 0.35;
+            float bands = fbm(vec3(vObj.x * 1.4, vObj.y * 7.0, vObj.z * 1.4) + vec3(0.0, uTime * 0.02, 0.0));
+            albedo = mix(vec3(0.68, 0.46, 0.18), vec3(0.98, 0.84, 0.48), bands);
+            albedo *= 0.88 + 0.2 * noise(vObj * 9.0);
+            atmo = 1.7;
+          } else if (uStyle > 2.5 && uStyle < 3.5) {
+            float n = fbm(vObj * 2.5);
+            float n2 = fbm(vObj * 6.8);
+            float land = smoothstep(0.46, 0.6, n);
+            vec3 sea = mix(vec3(0.015, 0.09, 0.28), vec3(0.06, 0.36, 0.68), wrap);
+            sea += vec3(0.2, 0.45, 0.5) * smoothstep(0.58, 0.82, n2) * 0.22;
+            vec3 ground = mix(vec3(0.1, 0.36, 0.14), vec3(0.45, 0.36, 0.18), smoothstep(0.35, 0.8, n2));
+            ground = mix(ground, vec3(0.22, 0.32, 0.16), smoothstep(0.62, 0.9, noise(vObj * 13.0)));
+            albedo = mix(sea, ground, land);
+            float pole = smoothstep(0.7, 0.92, abs(vObj.y));
+            albedo = mix(albedo, vec3(0.92, 0.95, 0.98), pole * 0.92);
+            float cities = pow(noise(vObj * 30.0), 12.0) * land * (1.0 - smoothstep(0.0, 0.22, ndl));
+            albedo += vec3(1.0, 0.84, 0.48) * cities * 1.3;
+            atmo = 1.15;
+            ocean = 1.0 - land;
+          } else if (uStyle > 3.5 && uStyle < 4.5) {
+            float n = fbm(vObj * 3.1);
+            float dark = smoothstep(0.52, 0.78, noise(vObj * 4.2 + 3.0));
+            albedo = mix(vec3(0.55, 0.2, 0.08), vec3(0.8, 0.36, 0.16), n);
+            albedo = mix(albedo, vec3(0.32, 0.12, 0.07), dark * 0.7);
+            float cap = smoothstep(0.76, 0.94, abs(vObj.y));
+            albedo = mix(albedo, vec3(0.95, 0.93, 0.9), cap);
+            atmo = 0.32;
           } else {
-            albedo = uAlbedo * (0.8 + 0.32 * noise(vObj * 4.2));
+            albedo = uAlbedo * (0.78 + 0.36 * fbm(vObj * 4.0));
           }
-          vec3 col = albedo * (0.14 + 0.9 * ndl);
+          vec3 col = albedo * (0.08 + 0.95 * wrap);
           if (uUseB > 0.5) {
-            float d2 = clamp(dot(N, normalize(uLightB - vWorld)), 0.0, 1.0);
-            col += albedo * d2 * 0.45;
+            float d2 = clamp(dot(N, normalize(uLightB - vWorld)) * 0.6 + 0.4, 0.0, 1.0);
+            col += albedo * d2 * 0.42;
           }
-          float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.3);
+          vec3 H = normalize(La + V);
+          float spec = pow(clamp(dot(N, H), 0.0, 1.0), 56.0) * ocean;
+          col += vec3(0.75, 0.88, 1.0) * spec * ndl * 0.7;
+          float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.15);
           vec3 atmoColor = uAtmosphere;
-          if (uStyle > 1.5 && uStyle < 2.5) atmoColor = vec3(1.05, 0.78, 0.38);
-          else if (uStyle > 2.5 && uStyle < 3.5) atmoColor = vec3(0.35, 0.72, 1.2);
-          else if (uStyle > 3.5 && uStyle < 4.5) atmoColor = vec3(0.9, 0.42, 0.24);
+          if (uStyle > 1.5 && uStyle < 2.5) atmoColor = vec3(1.05, 0.78, 0.36);
+          else if (uStyle > 2.5 && uStyle < 3.5) atmoColor = vec3(0.4, 0.74, 1.25);
+          else if (uStyle > 3.5 && uStyle < 4.5) atmoColor = vec3(0.95, 0.48, 0.26);
           col += atmoColor * fres * atmo;
           gl_FragColor = vec4(col, 1.0);
         }
@@ -840,6 +1017,20 @@ export class World {
       }));
       glow.renderOrder = 4;
       glow.raycast = () => {};
+      let corona = null;
+      let clouds = null;
+      if (body.kind === 'star') {
+        corona = new THREE.Mesh(this.sphere, this.coronaMat);
+        corona.raycast = () => {};
+        corona.renderOrder = 2;
+        group.add(corona);
+      }
+      if (body.style === 'earth') {
+        clouds = new THREE.Mesh(this.sphere, this.cloudMat);
+        clouds.raycast = () => {};
+        clouds.renderOrder = 2;
+        group.add(clouds);
+      }
       group.add(mesh);
       group.add(pick);
       group.add(glow);
@@ -853,6 +1044,8 @@ export class World {
         mesh,
         pick,
         glow,
+        corona,
+        clouds,
         material,
         ownsMaterial,
         trail,
@@ -898,7 +1091,13 @@ export class World {
       body.displayY = y;
       view.group.position.set(body.x, y, body.z);
       view.mesh.scale.setScalar(Math.max(body.radius, 0.05));
-      view.pick.scale.setScalar(Math.max(body.radius * 2.5, 0.85));
+      const touch = window.matchMedia('(pointer: coarse)').matches;
+      view.pick.scale.setScalar(Math.max(body.radius * (touch ? 3.4 : 2.6), touch ? 1.2 : 0.9));
+      if (view.corona) view.corona.scale.setScalar(Math.max(body.radius * 1.55, 0.2));
+      if (view.clouds) {
+        view.clouds.scale.setScalar(Math.max(body.radius * 1.055, 0.06));
+        view.clouds.rotation.y = body.spin * 1.2;
+      }
       const glowSize = Math.max(body.radius * body.glowScale, body.kind === 'blackhole' ? 3.2 : 1);
       view.glow.scale.set(glowSize, glowSize, 1);
       if (!state.paused) body.spin += dt * body.spinRate;
@@ -933,6 +1132,7 @@ export class World {
 
     this.disk.visible = Boolean(blackHole);
     this.photon.visible = Boolean(blackHole);
+    this.sharpRing.visible = Boolean(blackHole);
     this.tube.visible = Boolean(blackHole);
     if (blackHole) {
       const rs = Math.max(blackHole.displayHorizon, 0.08);
@@ -945,6 +1145,8 @@ export class World {
       const photonY = heightAt(blackHole.x + photonR, blackHole.z, state.bodies);
       this.photon.position.set(blackHole.x, photonY, blackHole.z);
       this.photon.scale.setScalar(photonR);
+      this.sharpRing.position.set(blackHole.x, photonY + 0.02, blackHole.z);
+      this.sharpRing.scale.setScalar(photonR);
       const length = Math.max(8, rs * 6.5);
       this.tube.scale.set(rs * 0.58, length, rs * 0.58);
       this.tube.position.set(blackHole.x, mouth - blackHole.radius * 0.15, blackHole.z);
@@ -1009,11 +1211,14 @@ export class World {
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
+    const pr = choosePixelRatio();
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(pr);
     this.renderer.setSize(width, height, false);
+    this.composer.setPixelRatio(pr);
     this.composer.setSize(width, height);
-    this.bloom.setSize(Math.max(1, width * 0.7), Math.max(1, height * 0.7));
+    this.bloom.setSize(Math.max(1, Math.floor(width * pr * 0.5)), Math.max(1, Math.floor(height * pr * 0.5)));
   }
 
   clientToNdc(x, y) {
@@ -1039,7 +1244,7 @@ export class World {
     let t = 0.2;
     let prevSide = null;
     let prevT = t;
-    for (let i = 0; i < 84; i += 1) {
+    for (let i = 0; i < 110; i += 1) {
       this._hit.copy(direction).multiplyScalar(t).add(origin);
       const h = heightAt(this._hit.x, this._hit.z, this.state.bodies);
       const side = this._hit.y - h;
@@ -1054,17 +1259,17 @@ export class World {
           else hi = mid;
         }
         this._hit.copy(direction).multiplyScalar(hi).add(origin);
-        if (Math.abs(this._hit.x) > 56 || Math.abs(this._hit.z) > 56) return null;
+        if (Math.abs(this._hit.x) > 96 || Math.abs(this._hit.z) > 96) return null;
         return { x: this._hit.x, z: this._hit.z };
       }
       prevSide = side;
       prevT = t;
-      const step = Math.min(1.45, Math.max(0.12, Math.abs(side) * 0.36));
+      const step = Math.min(2.4, Math.max(0.15, Math.abs(side) * 0.4));
       t += step;
-      if (t > 260) break;
+      if (t > 640) break;
     }
     if (this.raycaster.ray.intersectPlane(this.plane, this._planeHit)) {
-      if (Math.abs(this._planeHit.x) < 50 && Math.abs(this._planeHit.z) < 50) {
+      if (Math.abs(this._planeHit.x) < 96 && Math.abs(this._planeHit.z) < 96) {
         return { x: this._planeHit.x, z: this._planeHit.z };
       }
     }

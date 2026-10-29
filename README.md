@@ -28,10 +28,10 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 
 ## What you can do
 
-- Orbit and zoom the camera.
-- Click a body to inspect it. Drag it to move it; it keeps the velocity of the throw.
-- Click empty sheet to add a mass on a circular orbit around the heaviest body. Right-click a mass to remove it.
-- Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset.
+- Orbit with a drag or one finger. Pinch to zoom. Two-finger scroll on a trackpad pans; two fingers on a tablet pan and zoom together.
+- Click or tap a body to inspect it. On a Mac, drag a body to move it. On iPad, press and hold, then drag; release a hold without moving to remove it.
+- Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
+- Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - Keys: `1`–`4` presets, `Space` pause, `T` trails, `R` reset.
 
 ## Presets

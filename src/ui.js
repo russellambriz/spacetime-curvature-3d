@@ -64,6 +64,17 @@ export class UI {
     this.renderPresets();
     this.bind();
     this.syncTimeLabel();
+    const roomy = window.matchMedia('(min-width: 1280px) and (min-height: 780px)').matches;
+    if (roomy) {
+      this.math.classList.add('open');
+      this.explain.classList.add('open');
+    }
+    this.btnMath.setAttribute('aria-expanded', this.math.classList.contains('open') ? 'true' : 'false');
+    this.btnWhy.setAttribute('aria-expanded', this.explain.classList.contains('open') ? 'true' : 'false');
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      const hint = document.getElementById('hint');
+      hint.textContent = 'Tap a body to inspect · tap the sheet to add a mass · hold, then drag to move · hold still to remove · one finger orbits · pinch zooms · two fingers pan';
+    }
   }
 
   renderExplain() {
@@ -152,7 +163,7 @@ export class UI {
   paintRange(input) {
     const max = Number(input.max) || 1;
     const pct = (Number(input.value) / max) * 100;
-    input.style.background = `linear-gradient(90deg, #3dff9a ${pct}%, rgba(61,255,154,0.18) ${pct}%)`;
+    input.style.background = `linear-gradient(90deg, #3dff9a ${pct}%, rgba(61,255,154,0.18) ${pct}%) center / 100% 3px no-repeat`;
   }
 
   syncTimeLabel() {
