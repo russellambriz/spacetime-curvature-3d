@@ -10,7 +10,12 @@ The black-hole preset drops the same grid into a Flamm throat, with an event hor
 
 **Live demo:** [russellambriz.github.io/spacetime-curvature-3d](https://russellambriz.github.io/spacetime-curvature-3d/)
 
-The Pages site is published from `main` by GitHub Actions. In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions** if the first deploy has not run yet.
+That URL starts serving after GitHub Pages is turned on. The deploy workflow is already on `main`, but the Actions token cannot create the Pages site itself. Someone with admin access on the repo needs to:
+
+1. Open **Settings → Pages → Build and deployment** and set **Source** to **GitHub Actions**.
+2. Re-run the **Deploy GitHub Pages** workflow.
+
+After that, every push to `main` publishes the site.
 
 ## Run it locally
 
@@ -53,4 +58,4 @@ The “How curvature works” note states Einstein’s field equations, \(G_{\mu
 
 ## Deploy
 
-`.github/workflows/pages.yml` builds the site and deploys it with GitHub Pages on every push to `main`.
+`.github/workflows/pages.yml` builds the site and deploys it with GitHub Pages on every push to `main`. The workflow asks `configure-pages` to enable Pages when it can. On this repository that call needs an admin to choose **GitHub Actions** as the Pages source first; see above.
