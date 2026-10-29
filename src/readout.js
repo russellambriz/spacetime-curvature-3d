@@ -9,6 +9,7 @@ import {
   schwarzschildRadius,
   sci,
 } from './constants.js';
+import { WAVE_OBSERVER_MPC, waveMetrics } from './waves.js';
 
 function partnerOf(body, bodies) {
   let best = null;
@@ -77,8 +78,49 @@ function circularRatio(body, partner) {
 
 function kindLabel(body) {
   if (body.kind === 'blackhole') return 'Black hole';
+  if (body.kind === 'neutron') return 'Neutron star';
   if (body.kind === 'star') return 'Star';
   return 'Planet';
+}
+
+function formatFrequency(hz) {
+  if (!Number.isFinite(hz) || hz <= 0) return '—';
+  if (hz >= 1000) return `${(hz / 1000).toFixed(2)} kHz`;
+  if (hz >= 10) return `${hz.toFixed(1)} Hz`;
+  return `${hz.toFixed(3)} Hz`;
+}
+
+function waveFormulas(wave) {
+  return [
+    {
+      key: 'gw-f',
+      title: 'Gravitational-wave frequency',
+      tex: 'f_{\\mathrm{GW}} = \\dfrac{1}{\\pi}\\sqrt{\\dfrac{G(M+m)}{a^{3}}}',
+      value: formatFrequency(wave.fGw),
+      note: `Twice the orbital frequency. The mass pattern of ${wave.nameA} and ${wave.nameB} repeats every half orbit, so the wave does too.`,
+    },
+    {
+      key: 'gw-lambda',
+      title: 'Wavelength',
+      tex: '\\lambda = \\dfrac{c}{f_{\\mathrm{GW}}}',
+      value: formatLength(wave.lambda),
+      note: 'Distance between crests in the real wave. On the grid the crests are drawn closer together, so several fit in view.',
+    },
+    {
+      key: 'gw-strain',
+      title: `Strain at ${WAVE_OBSERVER_MPC} Mpc`,
+      tex: 'h = \\dfrac{4}{D}\\left(\\dfrac{G\\mathcal{M}_{c}}{c^{2}}\\right)^{5/3}\\left(\\dfrac{\\pi f_{\\mathrm{GW}}}{c}\\right)^{2/3}',
+      value: sci(wave.h, 3),
+      note: `Face-on amplitude. Chirp mass ${formatMass(wave.chirp)}. A detector at this distance, about as far as GW170817, measures strains of this size.`,
+    },
+    {
+      key: 'gw-tau',
+      title: 'Time to merger',
+      tex: '\\tau = \\dfrac{5}{256}\\,\\dfrac{c^{5} a^{4}}{G^{3} M m (M+m)}',
+      value: formatDuration(wave.tau),
+      note: 'Peters’ formula for a circular orbit. The animation keeps that orbit steady so the wave can be watched. It does not play the inspiral.',
+    },
+  ];
 }
 
 export function buildReadout(body, bodies, metersPerUnit) {
@@ -218,14 +260,28 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
   }
 
+  const wave = waveMetrics(bodies, metersPerUnit);
+  if (wave) {
+    stats.push(
+      { label: 'GW frequency', value: formatFrequency(wave.fGw), detail: 'twice per orbit' },
+      { label: 'Merges in', value: formatDuration(wave.tau), detail: 'if the orbit stays circular' },
+    );
+    formulas.unshift(...waveFormulas(wave));
+  }
+
   let motion = null;
+  if (wave) {
+    motion = 'The spiral on the grid is that wave: it turns with the stars and the crests move outward. The height is a diagram of a stretch that, in the real wave, happens in the plane.';
+  }
   if (partner && !central) {
     const ratio = circularRatio(body, partner);
     if (ratio !== null) {
-      motion = `Moving at ${ratio.toFixed(2)}× the Newtonian circular speed for this separation.`;
+      const line = `Moving at ${ratio.toFixed(2)}× the Newtonian circular speed for this separation.`;
+      motion = motion ? `${motion} ${line}` : line;
     }
   } else if (partner && central) {
-    motion = `${body.name} is the central mass. Orbital numbers above describe ${partner.name}.`;
+    const line = `${body.name} is the central mass. Orbital numbers above describe ${partner.name}.`;
+    motion = motion ? `${motion} ${line}` : line;
   }
 
   return {

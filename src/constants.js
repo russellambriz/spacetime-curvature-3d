@@ -117,6 +117,7 @@ export function formatDuration(seconds) {
   if (seconds >= 2 * day) return `${(seconds / day).toFixed(2)} days`;
   if (seconds >= 2 * hour) return `${(seconds / hour).toFixed(2)} h`;
   if (seconds >= 2 * minute) return `${(seconds / minute).toFixed(1)} min`;
+  if (seconds < 0.1) return `${(seconds * 1000).toFixed(1)} ms`;
   return `${seconds.toFixed(2)} s`;
 }
 

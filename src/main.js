@@ -12,6 +12,7 @@ import {
   selectedBody,
   setDraggedPosition,
 } from './sim.js';
+import { updateLiveWave } from './waves.js';
 
 const canvas = document.getElementById('scene');
 const loader = document.getElementById('loader');
@@ -305,7 +306,7 @@ window.addEventListener('keydown', (event) => {
     ui.toggleHud();
   } else if (event.key === 'r' || event.key === 'R') {
     document.getElementById('reset').click();
-  } else if (event.key >= '1' && event.key <= '4') {
+  } else if (event.key >= '1' && event.key <= '9') {
     const index = Number(event.key) - 1;
     const button = ui.presets.querySelectorAll('.preset')[index];
     if (button) button.click();
@@ -324,6 +325,7 @@ function frame(now) {
   last = now;
   const before = drag?.moved ? drag.id : null;
   advance(state, dt, before);
+  updateLiveWave(state);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

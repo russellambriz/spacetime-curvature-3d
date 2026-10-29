@@ -56,6 +56,14 @@ function binaryPair(m1, m2, separation) {
 
 const binary = binaryPair(BINARY_M1, BINARY_M2, BINARY_A);
 
+// Screen separation of the neutron-star pair, and the real separation the
+// readout reports. Sim masses only set the on-screen orbital period.
+const WAVE_A = 7.2;
+const WAVE_SIM_1 = 886;
+const WAVE_SIM_2 = 760;
+const WAVE_SEP_M = 1.345e5;
+const waveBinary = binaryPair(WAVE_SIM_1, WAVE_SIM_2, WAVE_A);
+
 const planet = (partial) => ({
   kind: 'planet',
   trail: true,
@@ -303,6 +311,57 @@ export const PRESETS = [
         glow: '#ff7a4a',
         glowScale: 4.6,
         ...binary.b,
+      },
+    ],
+  },
+  {
+    id: 'waves',
+    name: 'Gravitational waves',
+    tagline: 'Two neutron stars, and the quadrupole wave leaving their orbit.',
+    metersPerUnit: WAVE_SEP_M / WAVE_A,
+    camera: { position: [4, 30, 40], target: [-2, -1.6, 0] },
+    select: 'Neutron star B',
+    wave: { amp: 5.4, k: 0.46, inner: 4.9 },
+    bodies: [
+      {
+        name: 'Neutron star A',
+        kind: 'neutron',
+        massKg: 1.4 * M_SUN,
+        radiusM: 1.2e4,
+        simMass: WAVE_SIM_1,
+        visualStrength: 2.15,
+        softening: 0.42,
+        radius: 0.5,
+        spin: 0.9,
+        trail: true,
+        trailWidth: 0.1,
+        trailColor: [0.45, 0.82, 1.55],
+        style: 'neutron',
+        core: [0.92, 1.05, 1.45],
+        limb: [0.28, 0.48, 1.2],
+        glow: '#8ecbff',
+        glowScale: 3.6,
+        ...waveBinary.a,
+      },
+      {
+        name: 'Neutron star B',
+        kind: 'neutron',
+        massKg: 1.2 * M_SUN,
+        radiusM: 1.15e4,
+        simMass: WAVE_SIM_2,
+        visualStrength: 1.85,
+        softening: 0.4,
+        radius: 0.46,
+        spin: 1.15,
+        trail: true,
+        trailWidth: 0.1,
+        trailColor: [0.35, 1.25, 0.85],
+        style: 'neutron',
+        core: [0.78, 1.28, 1.05],
+        limb: [0.16, 0.72, 0.62],
+        glow: '#7dffe0',
+        glowScale: 3.3,
+        ...waveBinary.b,
       },
     ],
   },

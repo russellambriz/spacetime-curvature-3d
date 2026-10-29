@@ -6,6 +6,10 @@ An interactive embedding diagram of curved spacetime. Stars and planets sit in a
 
 The black-hole preset drops the same grid into a Flamm throat, with an event horizon and a star on a close orbit.
 
+The gravitational-wave preset keeps that grid and draws the quadrupole ripple of a neutron-star pair: a two-armed spiral, twice per orbit, with the crests moving outward.
+
+![Two neutron stars on the sheet, with the outgoing gravitational-wave ripple and the live wave math](media/waves.png)
+
 ![A magenta black hole, its wireframe throat, and an orbiting star](media/black-hole.png)
 
 **Live demo:** [russellambriz.github.io/spacetime-curvature-3d](https://russellambriz.github.io/spacetime-curvature-3d/)
@@ -33,7 +37,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
-- Keys: `1`–`4` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
+- Keys: `1`–`5` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
 
 ## Presets
 
@@ -43,6 +47,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 | Inner planets | Mercury, Venus, Earth, and Mars, with distances in true proportion. |
 | Black hole | A 4.3 million solar-mass horizon. The star orbits at seven Schwarzschild radii, so the throat is to scale with that orbit. |
 | Binary stars | 1.5 and 1.0 solar masses around a common barycenter. |
+| Gravitational waves | A 1.4 and 1.2 solar-mass neutron-star pair. The grid carries the quadrupole wave their orbit sheds: a two-armed spiral, twice per orbit, crests moving outward. |
 
 ## The math
 
@@ -54,6 +59,15 @@ The panel is rendered with KaTeX and updates from the live separation. Numbers u
 - Schwarzschild radius, \(r_s = 2GM / c^2\)
 - Gravitational time dilation, \(\sqrt{1 - r_s / r}\)
 - Escape speed, \(v_{esc} = \sqrt{2GM / r}\)
+
+On the gravitational-wave preset the panel also reads the live separation as a wave:
+
+- Frequency, \(f_{GW} = 2 f_{orb}\)
+- Wavelength, \(\lambda = c / f_{GW}\)
+- Face-on strain at 40 Mpc, from the chirp mass
+- Time to merger for a circular orbit, from Peters’ formula
+
+The ripples are a diagram. Crests on the grid are drawn closer together than that true wavelength, so several fit in view, and the orbit is held steady instead of being played through the inspiral. The numbers stay in SI.
 
 The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, and a softened potential well for stars and planets. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
 

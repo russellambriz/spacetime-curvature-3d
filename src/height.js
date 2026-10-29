@@ -3,8 +3,10 @@
  * Stars and planets use a softened potential well. A black hole uses Flamm's
  * paraboloid (the isometric embedding of a Schwarzschild spatial slice),
  * continued below the horizon as a narrow throat.
- * The vertex shader in world.js must implement the same function.
+ * The GW ripples preset adds sampleWave(), a quadrupole diagram locked to the orbit.
+ * The vertex shader in world.js must implement the same functions.
  */
+import { sampleWave } from './waves.js';
 
 export function flammHeight(r, rs, depthScale) {
   const R0 = rs * 14;
@@ -38,5 +40,5 @@ export function heightAt(x, z, bodies, skipId = null) {
     if (skipId !== null && bodies[i].id === skipId) continue;
     h += contribution(x, z, bodies[i]);
   }
-  return h;
+  return h + sampleWave(x, z);
 }

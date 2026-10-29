@@ -13,6 +13,7 @@ import {
   MAX_BODIES,
 } from './constants.js';
 import { heightAt } from './height.js';
+import { liveWave } from './waves.js';
 
 const GRID_CELL = 2.15;
 const STYLE_ID = { generic: 0, mercury: 1, venus: 2, earth: 3, mars: 4 };
@@ -49,8 +50,11 @@ float fbm(vec3 p) {
 const SHEET_VERT = /* glsl */ `
 uniform vec4 uBody[${MAX_BODIES}];
 uniform vec4 uExtra[${MAX_BODIES}];
+uniform vec4 uWave;
+uniform vec4 uWaveParams;
 varying vec2 vGrid;
 varying float vHeight;
+varying float vWave;
 varying float vBh;
 varying vec3 vWorld;
 
@@ -88,12 +92,29 @@ float sheetHeight(vec2 p) {
   return h;
 }
 
+float sampleWave(vec2 p) {
+  if (uWave.w < 0.5) return 0.0;
+  vec2 d = p - uWave.xy;
+  float r = length(d);
+  float inner = max(uWaveParams.z, 0.001);
+  if (r <= inner) return 0.0;
+  float span = inner * 1.35;
+  float t = clamp((r - inner) / span, 0.0, 1.0);
+  float env = t * t * (3.0 - 2.0 * t);
+  float psi = atan(d.y, d.x);
+  float pattern = cos(2.0 * (psi - uWave.z) + uWaveParams.y * r);
+  float fall = uWaveParams.x * pow(inner / r, 0.75);
+  return env * fall * pattern;
+}
+
 void main() {
   vec3 pos = position;
   vGrid = pos.xz;
   float h = sheetHeight(pos.xz);
+  float w = sampleWave(pos.xz);
   vHeight = h;
-  pos.y = h;
+  vWave = w;
+  pos.y = h + w;
   vec4 worldPos = modelMatrix * vec4(pos, 1.0);
   vWorld = worldPos.xyz;
   gl_Position = projectionMatrix * viewMatrix * worldPos;
@@ -103,6 +124,7 @@ void main() {
 const SHEET_FRAG = /* glsl */ `
 varying vec2 vGrid;
 varying float vHeight;
+varying float vWave;
 varying float vBh;
 varying vec3 vWorld;
 uniform float uHalf;
@@ -130,7 +152,10 @@ void main() {
   vec3 green = vec3(0.14, 1.08, 0.36);
   vec3 magenta = vec3(1.15, 0.3, 0.88);
   vec3 col = mix(green, magenta, clamp(vBh, 0.0, 1.0));
-  col *= line * fade * (0.7 + slope * 0.65);
+  float waveLift = 1.0 + clamp(vWave * 0.42, -0.58, 1.35);
+  float crest = clamp(vWave * 0.22, 0.0, 0.5);
+  col = mix(col, vec3(0.78, 1.28, 0.96), crest);
+  col *= line * fade * (0.7 + slope * 0.65) * waveLift;
   if (line * fade < 0.028) discard;
   gl_FragColor = vec4(col, 1.0);
 }
@@ -378,6 +403,8 @@ export class World {
     this.useB = { value: 0 };
     this.bodyUniforms = Array.from({ length: MAX_BODIES }, () => new THREE.Vector4());
     this.extraUniforms = Array.from({ length: MAX_BODIES }, () => new THREE.Vector4());
+    this.waveUniform = new THREE.Vector4(0, 0, 0, 0);
+    this.waveParamsUniform = new THREE.Vector4(0, 0.4, 1, 0);
     this._ndc = new THREE.Vector2();
     this._hit = new THREE.Vector3();
     this._planeHit = new THREE.Vector3();
@@ -596,6 +623,8 @@ export class World {
       uniforms: {
         uBody: { value: this.bodyUniforms },
         uExtra: { value: this.extraUniforms },
+        uWave: { value: this.waveUniform },
+        uWaveParams: { value: this.waveParamsUniform },
         uHalf: { value: GRID_SIZE * 0.5 },
         uCell: { value: GRID_CELL },
       },
@@ -991,7 +1020,7 @@ export class World {
       if (body.kind === 'blackhole') {
         material = this.makeBlackHoleMaterial();
         ownsMaterial = false;
-      } else if (body.kind === 'star') {
+      } else if (body.kind === 'star' || body.kind === 'neutron') {
         material = this.makeStarMaterial(body);
       } else {
         material = this.makePlanetMaterial(body);
@@ -1013,7 +1042,7 @@ export class World {
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         toneMapped: false,
-        opacity: body.kind === 'star' ? 0.9 : 0.75,
+        opacity: body.kind === 'star' || body.kind === 'neutron' ? 0.9 : 0.75,
       }));
       glow.renderOrder = 4;
       glow.raycast = () => {};
@@ -1164,6 +1193,13 @@ export class World {
         this.bodyUniforms[i].set(body.x, body.z, body.visualStrength, Math.max(body.softening, 0.05));
         this.extraUniforms[i].set(0, 0, 0, 0);
       }
+    }
+
+    if (liveWave.enabled) {
+      this.waveUniform.set(liveWave.cx, liveWave.cz, liveWave.angle, 1);
+      this.waveParamsUniform.set(liveWave.amp, liveWave.k, Math.max(liveWave.inner, 0.001), 0);
+    } else {
+      this.waveUniform.w = 0;
     }
   }
 

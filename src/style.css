@@ -681,22 +681,32 @@ kbd {
     gap: 8px;
     width: 100%;
     max-width: 100%;
+    overflow: hidden;
+  }
+  #presets {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
-  #nav-row::-webkit-scrollbar { display: none; }
-  #presets {
-    flex-wrap: nowrap;
-    width: max-content;
-    max-width: none;
-    overflow: visible;
-  }
+  #presets::-webkit-scrollbar { display: none; }
   #top-toggles { flex: 0 0 auto; }
   #controls { padding: 2px 8px 8px; }
   .control-row { gap: 8px; }
   .slider { flex: 1 1 calc(50% - 8px); }
-  .slider span { font-size: 10px; letter-spacing: 0.06em; }
+  .slider span { min-width: 0; font-size: 10px; letter-spacing: 0.06em; }
+  #mass-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   input[type="range"] { height: 28px; }
 }
 

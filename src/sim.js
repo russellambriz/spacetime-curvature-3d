@@ -1,5 +1,6 @@
 import { M_EARTH, R_EARTH, MAX_BODIES, schwarzschildRadius } from './constants.js';
 import { getPreset } from './presets.js';
+import { updateLiveWave } from './waves.js';
 
 const GRAVITY_SOFT = 0.55;
 const GRAVITY_SOFT2 = GRAVITY_SOFT * GRAVITY_SOFT;
@@ -77,6 +78,7 @@ export function createState(presetId = 'sun-earth') {
     addedCount: 0,
     accumulator: 0,
     tagline: '',
+    wave: null,
   };
 }
 
@@ -89,12 +91,16 @@ export function loadPreset(state, presetId) {
     target: [...preset.camera.target],
   };
   state.tagline = preset.tagline;
+  state.wave = preset.wave
+    ? { amp: preset.wave.amp, k: preset.wave.k, inner: preset.wave.inner }
+    : null;
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
   const selected = state.bodies.find((body) => body.name === preset.select) ?? state.bodies[0];
   state.selectedId = selected.id;
   computeAccelerations(state.bodies);
+  updateLiveWave(state);
   return state;
 }
 

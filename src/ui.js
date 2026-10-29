@@ -119,6 +119,9 @@ export class UI {
       ['tex', 'z(r) = 2\\sqrt{r_{s}(r - r_{s})}'],
       ['tex', 'z(\\mathbf{x}) = -\\sum_{i}\\dfrac{\\alpha M_{i}}{\\sqrt{\\lVert\\mathbf{x}-\\mathbf{x}_{i}\\rVert^{2}+\\epsilon_{i}^{2}}}'],
       ['p', 'Orbits are free-fall paths on that sheet. Deeper in a well, clocks run slow and escape speed climbs, until rₛ = 2GM/c² pinches off into a horizon. Planetary dimples are drawn deeper than their real mass ratio. The math panel uses SI constants and the true masses.'],
+      ['p', 'A gravitational wave is not another well. A circular pair sheds a ripple at twice its orbital frequency, and the ripple travels outward at the speed of light:'],
+      ['tex', 'f_{\\mathrm{GW}} = 2 f_{\\mathrm{orb}}'],
+      ['p', 'The Gravitational waves preset draws that quadrupole pattern into this same grid. The spiral turns with the neutron stars, and the crests move out. The raised and lowered lines are a diagram: a real wave stretches and squeezes distances in the plane. Crests on screen are packed closer than the true wavelength so several fit in view. The math panel gives the real frequency, wavelength, strain at 40 Mpc, and time to merger.'],
     ];
     const root = document.getElementById('explain-body');
     for (let i = 0; i < blocks.length; i += 1) {
@@ -215,9 +218,26 @@ export class UI {
   setPresetActive(id) {
     const buttons = this.presets.querySelectorAll('.preset');
     buttons.forEach((button) => {
-      button.setAttribute('aria-pressed', button.dataset.preset === id ? 'true' : 'false');
+      const on = button.dataset.preset === id;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) requestAnimationFrame(() => this.revealPreset(button));
     });
     this.tagline.textContent = this.state.tagline;
+  }
+
+  revealPreset(button) {
+    let scroller = button.parentElement;
+    while (scroller && scroller !== document.body) {
+      const overflow = getComputedStyle(scroller).overflowX;
+      if ((overflow === 'auto' || overflow === 'scroll') && scroller.scrollWidth > scroller.clientWidth + 1) {
+        const buttonRect = button.getBoundingClientRect();
+        const box = scroller.getBoundingClientRect();
+        if (buttonRect.left < box.left) scroller.scrollLeft -= box.left - buttonRect.left + 8;
+        else if (buttonRect.right > box.right) scroller.scrollLeft += buttonRect.right - box.right + 8;
+        return;
+      }
+      scroller = scroller.parentElement;
+    }
   }
 
   refreshSelection() {
