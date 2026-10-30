@@ -15,7 +15,13 @@ import {
   GRID_SIZE,
   MAX_BODIES,
 } from './constants.js';
-import { heightAt } from './height.js';
+import {
+  THROAT_FADE_END,
+  THROAT_FADE_START,
+  THROAT_NARROW,
+  THROAT_SHAPE,
+  heightAt,
+} from './height.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { liveWave } from './waves.js';
 
@@ -60,9 +66,13 @@ varying vec2 vGrid;
 varying float vHeight;
 varying float vWave;
 varying float vBh;
+varying float vAbyss;
 varying vec3 vWorld;
 
-float flammHeight(float r, float rs, float depthScale) {
+vec2 gPinch = vec2(0.0);
+float gAbyss = 0.0;
+
+float flammHeight(float r, float rs, float depthScale, float throatDepth) {
   float R0 = rs * 14.0;
   float mouth = rs * 1.03;
   float rOut = max(r, mouth);
@@ -70,8 +80,13 @@ float flammHeight(float r, float rs, float depthScale) {
   float w0 = 2.0 * sqrt(max(rs * (R0 - rs), 0.0));
   float h = (w - w0) * depthScale;
   if (r < mouth) {
-    float t = (mouth - r) / max(rs, 0.0001);
-    h -= w0 * depthScale * (t * 0.55 + t * t * 0.35);
+    if (throatDepth <= 0.0) {
+      float t = (mouth - r) / max(rs, 0.0001);
+      h -= w0 * depthScale * (t * 0.55 + t * t * 0.35);
+    } else {
+      float u = clamp((mouth - r) / mouth, 0.0, 1.0);
+      h -= throatDepth * (u + ${THROAT_SHAPE} * u * u);
+    }
   }
   return h;
 }
@@ -79,6 +94,8 @@ float flammHeight(float r, float rs, float depthScale) {
 float sheetHeight(vec2 p) {
   float h = 0.0;
   float bh = 0.0;
+  gPinch = p;
+  gAbyss = 0.0;
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     vec4 b = uBody[i];
     vec4 e = uExtra[i];
@@ -86,13 +103,24 @@ float sheetHeight(vec2 p) {
     float r = length(d);
     if (e.x > 0.5) {
       float rs = max(e.y, 0.0001);
-      h += flammHeight(r, rs, b.z);
+      float throatDepth = e.z;
+      h += flammHeight(r, rs, b.z, throatDepth);
       bh = max(bh, 1.0 - smoothstep(rs * 1.15, rs * 6.5, r));
+      float mouth = rs * 1.03;
+      if (throatDepth > 0.0 && r < mouth) {
+        float u = clamp((mouth - r) / mouth, 0.0, 1.0);
+        gAbyss = max(gAbyss, smoothstep(${THROAT_FADE_START}, ${THROAT_FADE_END}, u));
+        if (r > 0.0001) {
+          float radiusScale = exp(-${THROAT_NARROW} * u);
+          gPinch = b.xy + (d / r) * mouth * radiusScale;
+        }
+      }
     } else {
       h += -b.z / sqrt(r * r + b.w * b.w);
     }
   }
   vBh = bh;
+  vAbyss = gAbyss;
   return h;
 }
 
@@ -113,11 +141,13 @@ float sampleWave(vec2 p) {
 
 void main() {
   vec3 pos = position;
-  vGrid = pos.xz;
   float h = sheetHeight(pos.xz);
   float w = sampleWave(pos.xz);
+  vGrid = gPinch;
   vHeight = h;
   vWave = w;
+  vAbyss = gAbyss;
+  pos.xz = gPinch;
   pos.y = h + w;
   vec4 worldPos = modelMatrix * vec4(pos, 1.0);
   vWorld = worldPos.xyz;
@@ -130,6 +160,7 @@ varying vec2 vGrid;
 varying float vHeight;
 varying float vWave;
 varying float vBh;
+varying float vAbyss;
 varying vec3 vWorld;
 uniform float uHalf;
 uniform float uCell;
@@ -152,14 +183,15 @@ void main() {
   float radial = 1.0 - smoothstep(uHalf * 0.38, uHalf * 0.97, length(vGrid));
   float distFade = 1.0 - smoothstep(70.0, 250.0, length(vWorld - cameraPosition));
   float fade = radial * distFade;
-  float slope = clamp(-vHeight / 24.0, 0.0, 1.0);
+  float abyss = clamp(vAbyss, 0.0, 1.0);
+  float slope = clamp(-vHeight / 24.0, 0.0, 1.0) * (1.0 - abyss);
   vec3 green = vec3(0.14, 1.08, 0.36);
   vec3 magenta = vec3(1.15, 0.3, 0.88);
   vec3 col = mix(green, magenta, clamp(vBh, 0.0, 1.0));
   float waveLift = 1.0 + clamp(vWave * 0.42, -0.58, 1.35);
   float crest = clamp(vWave * 0.22, 0.0, 0.5);
   col = mix(col, vec3(0.78, 1.28, 0.96), crest);
-  col *= line * fade * (0.7 + slope * 0.65) * waveLift;
+  col *= line * fade * (0.7 + slope * 0.65) * waveLift * (1.0 - abyss);
   if (line * fade < 0.028) discard;
   gl_FragColor = vec4(col, 1.0);
 }
@@ -374,6 +406,77 @@ function buildTube() {
     const z = Math.sin(a);
     positions.push(x, 0, z, x, -1, z);
     colors.push(...top, ...bot);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const lines = new THREE.LineSegments(geo, mat);
+  lines.frustumCulled = false;
+  lines.renderOrder = 1;
+  lines.raycast = () => {};
+  lines.visible = false;
+  return lines;
+}
+
+function smooth01(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function buildAbyss() {
+  const radial = 8;
+  const rings = 14;
+  const maxU = Math.min(0.88, THROAT_FADE_END + 0.05);
+  const positions = [];
+  const colors = [];
+  const lip = [0.48, 0.42, 0.58];
+  const shaft = [0.07, 0.4, 0.16];
+  const colorAt = (u) => {
+    const fade = (1 - smooth01(THROAT_FADE_START, THROAT_FADE_END, u)) ** 1.15;
+    const green = Math.min(1, u * 2.4);
+    return [
+      (lip[0] + (shaft[0] - lip[0]) * green) * fade,
+      (lip[1] + (shaft[1] - lip[1]) * green) * fade,
+      (lip[2] + (shaft[2] - lip[2]) * green) * fade,
+    ];
+  };
+  const ring = (u) => Math.exp(-THROAT_NARROW * u);
+  const depth = (u) => -(u + THROAT_SHAPE * u * u);
+  const uAt = (i, n) => (i / (n - 1)) * maxU;
+  for (let i = 0; i < rings; i += 1) {
+    const u = uAt(i, rings);
+    const y = depth(u);
+    const radius = ring(u);
+    const col = colorAt(u);
+    for (let j = 0; j < radial; j += 1) {
+      const a0 = (j / radial) * Math.PI * 2;
+      const a1 = ((j + 1) / radial) * Math.PI * 2;
+      positions.push(
+        Math.cos(a0) * radius, y, Math.sin(a0) * radius,
+        Math.cos(a1) * radius, y, Math.sin(a1) * radius,
+      );
+      colors.push(...col, ...col);
+    }
+  }
+  for (let j = 0; j < radial; j += 1) {
+    const a = (j / radial) * Math.PI * 2;
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    for (let i = 0; i < rings - 1; i += 1) {
+      const u0 = uAt(i, rings);
+      const u1 = uAt(i + 1, rings);
+      const c0 = colorAt(u0);
+      const c1 = colorAt(u1);
+      positions.push(c * ring(u0), depth(u0), s * ring(u0), c * ring(u1), depth(u1), s * ring(u1));
+      colors.push(...c0, ...c1);
+    }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -766,6 +869,8 @@ export class World {
 
     this.tube = buildTube();
     this.scene.add(this.tube);
+    this.abyss = buildAbyss();
+    this.scene.add(this.abyss);
   }
 
   _buildLens() {
@@ -1253,7 +1358,15 @@ export class World {
         : heightAt(body.x, body.z, state.bodies) + body.radius * 0.2;
       body.displayY = y;
       view.group.position.set(body.x, y, body.z);
-      view.mesh.scale.setScalar(Math.max(body.radius, 0.05));
+      const deep = body.kind === 'blackhole' && (body.throatDepth || 0) > 0;
+      if (deep) {
+        const rs = Math.max(body.displayHorizon, 0.08);
+        view.mesh.scale.setScalar(rs * 0.42);
+        view.mesh.position.y = -rs * 1.25;
+      } else {
+        view.mesh.scale.setScalar(Math.max(body.radius, 0.05));
+        view.mesh.position.y = 0;
+      }
       const touch = window.matchMedia('(pointer: coarse)').matches;
       view.pick.scale.setScalar(Math.max(body.radius * (touch ? 3.4 : 2.6), touch ? 1.2 : 0.9));
       if (view.corona) view.corona.scale.setScalar(Math.max(body.radius * 1.55, 0.2));
@@ -1261,8 +1374,12 @@ export class World {
         view.clouds.scale.setScalar(Math.max(body.radius * 1.055, 0.06));
         view.clouds.rotation.y = body.spin * 1.2;
       }
-      const glowSize = Math.max(body.radius * body.glowScale, body.kind === 'blackhole' ? 3.2 : 1);
+      const glowSize = deep
+        ? Math.max(body.displayHorizon * 1.55, 1.2)
+        : Math.max(body.radius * body.glowScale, body.kind === 'blackhole' ? 3.2 : 1);
       view.glow.scale.set(glowSize, glowSize, 1);
+      view.glow.position.y = deep ? -body.displayHorizon * 0.45 : 0;
+      if (body.kind === 'blackhole') view.glow.material.opacity = deep ? 0.42 : 0.75;
       if (!state.paused) body.spin += dt * body.spinRate;
       view.mesh.rotation.y = body.spin;
       view.mesh.rotation.z = body.tilt || 0;
@@ -1293,10 +1410,12 @@ export class World {
       this.ring.visible = false;
     }
 
+    const deepThroat = Boolean(blackHole) && (blackHole.throatDepth || 0) > 0;
     this.disk.visible = Boolean(blackHole);
     this.photon.visible = Boolean(blackHole);
     this.sharpRing.visible = Boolean(blackHole);
-    this.tube.visible = Boolean(blackHole);
+    this.tube.visible = Boolean(blackHole) && !deepThroat;
+    this.abyss.visible = deepThroat;
     if (blackHole) {
       const rs = Math.max(blackHole.displayHorizon, 0.08);
       const mouth = heightAt(blackHole.x + rs * 1.03, blackHole.z, state.bodies);
@@ -1310,9 +1429,14 @@ export class World {
       this.photon.scale.setScalar(photonR);
       this.sharpRing.position.set(blackHole.x, photonY + 0.02, blackHole.z);
       this.sharpRing.scale.setScalar(photonR);
-      const length = Math.max(8, rs * 6.5);
-      this.tube.scale.set(rs * 0.58, length, rs * 0.58);
-      this.tube.position.set(blackHole.x, mouth - blackHole.radius * 0.15, blackHole.z);
+      if (deepThroat) {
+        this.abyss.position.set(blackHole.x, mouth, blackHole.z);
+        this.abyss.scale.set(rs * 1.03, blackHole.throatDepth, rs * 1.03);
+      } else {
+        const length = Math.max(8, rs * 6.5);
+        this.tube.scale.set(rs * 0.58, length, rs * 0.58);
+        this.tube.position.set(blackHole.x, mouth - blackHole.radius * 0.15, blackHole.z);
+      }
     }
 
     for (let i = 0; i < MAX_BODIES; i += 1) {
@@ -1322,7 +1446,7 @@ export class World {
         this.extraUniforms[i].set(0, 0, 0, 0);
       } else if (body.kind === 'blackhole') {
         this.bodyUniforms[i].set(body.x, body.z, body.visualStrength || 1, 1);
-        this.extraUniforms[i].set(1, Math.max(body.displayHorizon, 0.08), 0, 0);
+        this.extraUniforms[i].set(1, Math.max(body.displayHorizon, 0.08), body.throatDepth || 0, 0);
       } else {
         this.bodyUniforms[i].set(body.x, body.z, body.visualStrength, Math.max(body.softening, 0.05));
         this.extraUniforms[i].set(0, 0, 0, 0);

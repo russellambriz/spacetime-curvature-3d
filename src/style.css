@@ -673,29 +673,48 @@ kbd {
   h1 { font-size: 28px; }
   #tagline,
   #brand .kicker { display: none; }
-  #top { gap: 8px; }
+  #top {
+    right: calc(10px + env(safe-area-inset-right));
+    left: calc(10px + env(safe-area-inset-left));
+    gap: 6px;
+  }
+  #brand { max-width: calc(100% - 48px); }
   #nav-row {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
     max-width: 100%;
-    overflow: hidden;
+    overflow: visible;
   }
   #presets {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
     min-width: 0;
-    width: auto;
     max-width: none;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
+    padding-bottom: 0;
   }
-  #presets::-webkit-scrollbar { display: none; }
-  #top-toggles { flex: 0 0 auto; }
+  button.preset {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 6px 3px;
+    font-size: 11px;
+    line-height: 1.15;
+    letter-spacing: 0;
+    text-align: center;
+    white-space: normal;
+  }
+  #top-toggles {
+    flex: 1 1 auto;
+    margin-left: auto;
+  }
   #controls { padding: 2px 8px 8px; }
   .control-row { gap: 8px; }
   .slider { flex: 1 1 calc(50% - 8px); }

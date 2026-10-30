@@ -223,7 +223,7 @@ export const PRESETS = [
     name: 'Black hole',
     tagline: 'A supermassive horizon. The star orbits at seven Schwarzschild radii.',
     metersPerUnit: schwarzschildRadius(BH_MASS) / BH_HORIZON,
-    camera: { position: [16, 18, 32], target: [2.5, -8, 1.2] },
+    camera: { position: [30, 7, 18], target: [-0.4, -34, 0.6] },
     select: 'Black hole',
     bodies: [
       {
@@ -232,7 +232,8 @@ export const PRESETS = [
         massKg: BH_MASS,
         radiusM: schwarzschildRadius(BH_MASS),
         simMass: BH_SIM,
-        visualStrength: 1,
+        visualStrength: 1.8,
+        throatDepth: 68,
         softening: 1,
         radius: BH_HORIZON * 0.92,
         displayHorizon: BH_HORIZON,
