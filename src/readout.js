@@ -9,6 +9,7 @@ import {
   schwarzschildRadius,
   sci,
 } from './constants.js';
+import { lensMetrics } from './lens.js';
 import { WAVE_OBSERVER_MPC, waveMetrics } from './waves.js';
 
 function partnerOf(body, bodies) {
@@ -88,6 +89,61 @@ function formatFrequency(hz) {
   if (hz >= 1000) return `${(hz / 1000).toFixed(2)} kHz`;
   if (hz >= 10) return `${hz.toFixed(1)} Hz`;
   return `${hz.toFixed(3)} Hz`;
+}
+
+function formatAngle(radians) {
+  if (!Number.isFinite(radians)) return '—';
+  const arcsec = Math.abs(radians) * (180 / Math.PI) * 3600;
+  if (arcsec < 180) {
+    const places = arcsec >= 20 ? 1 : 2;
+    return `${arcsec.toFixed(places)}″`;
+  }
+  const deg = Math.abs(radians) * (180 / Math.PI);
+  if (deg < 10) return `${deg.toFixed(2)}°`;
+  return `${deg.toFixed(1)}°`;
+}
+
+function formatMicroarcsec(radians) {
+  if (!Number.isFinite(radians)) return '—';
+  const uas = Math.abs(radians) * (180 / Math.PI) * 3600 * 1e6;
+  if (uas >= 1000) return `${(uas / 1000).toFixed(2)} mas`;
+  if (uas >= 100) return `${Math.round(uas)} μas`;
+  if (uas >= 10) return `${uas.toFixed(1)} μas`;
+  return `${uas.toFixed(2)} μas`;
+}
+
+function lensFormulas(lens) {
+  const kpc = (lens.distancePc / 1000).toFixed(2);
+  return [
+    {
+      key: 'lens-photon',
+      title: 'Photon sphere',
+      tex: 'r_{\\gamma} = \\dfrac{3GM}{c^{2}}',
+      value: formatLength(lens.photonM),
+      note: '1.5 Schwarzschild radii. The bright ring on the sheet is this orbit. It is unstable: nudge a ray and it falls in or escapes.',
+    },
+    {
+      key: 'lens-bcrit',
+      title: 'Critical impact parameter',
+      tex: 'b_{c} = \\dfrac{3\\sqrt{3}}{2}\\, r_{s}',
+      value: formatLength(lens.bCritM),
+      note: '2.598 horizons. A ray aimed closer than this falls through the horizon. The tight spirals are just inside and just outside that aim.',
+    },
+    {
+      key: 'lens-alpha',
+      title: `Deflection at ${lens.featureB} rₛ`,
+      tex: '\\alpha = \\dfrac{4GM}{c^{2} b}',
+      value: formatAngle(lens.deflection),
+      note: `Turn of the outer drawn ray, from the integrated geodesic. The weak-field formula gives ${formatAngle(lens.weak)} here. A ray that grazes the Sun, where that formula is enough, deflects by ${formatAngle(lens.solar)}.`,
+    },
+    {
+      key: 'lens-shadow',
+      title: 'Shadow angular diameter',
+      tex: '\\theta = \\dfrac{3\\sqrt{3}\\, r_{s}}{D}',
+      value: formatMicroarcsec(lens.shadow),
+      note: `At ${kpc} kpc, about the distance to the Galactic center. The Event Horizon Telescope measured about 52 μas for Sagittarius A*.`,
+    },
+  ];
 }
 
 function waveFormulas(wave) {
@@ -232,8 +288,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
       });
     }
   } else {
-    const surfaceR = Math.max(body.radiusM, rsSelf * 1.0001);
-    const vSurface = Math.sqrt((2 * G * body.massKg) / body.radiusM);
+    const hole = body.kind === 'blackhole';
+    const surfaceR = hole ? rsSelf : Math.max(body.radiusM, rsSelf * 1.0001);
+    const vSurface = Math.sqrt((2 * G * body.massKg) / (hole ? rsSelf : body.radiusM));
     stats.push({ label: 'Separation', value: '—' }, { label: 'Partner', value: '—' });
     formulas.push(
       {
@@ -241,22 +298,39 @@ export function buildReadout(body, bodies, metersPerUnit) {
         title: 'Schwarzschild radius',
         tex: 'r_{s} = \\dfrac{2GM}{c^{2}}',
         value: formatLength(rsSelf),
-        note: '',
+        note: hole ? 'The event horizon of an uncharged, non-spinning black hole.' : '',
       },
       {
         key: 'dilation',
         title: 'Gravitational time dilation',
         tex: '\\dfrac{\\Delta\\tau}{\\Delta t} = \\sqrt{1 - \\dfrac{r_{s}}{r}}',
         value: dilationValue(rsSelf, surfaceR),
-        note: dilationNote(rsSelf, surfaceR, 'on the surface'),
+        note: dilationNote(rsSelf, surfaceR, hole ? 'at the horizon' : 'on the surface'),
       },
       {
         key: 'escape',
-        title: 'Escape velocity',
+        title: hole ? 'Escape velocity at the horizon' : 'Escape velocity',
         tex: 'v_{\\mathrm{esc}} = \\sqrt{\\dfrac{2GM}{r}}',
         value: formatSpeed(vSurface),
-        note: 'From the surface, to infinity.',
+        note: hole
+          ? 'Newtonian escape speed at r = rₛ is exactly c. Light on the horizon is marginally bound.'
+          : 'From the surface, to infinity.',
       },
+    );
+  }
+
+  const lens = lensMetrics(bodies);
+  if (lens && !partner) {
+    stats.pop();
+    stats.pop();
+    stats.push(
+      { label: 'Photon orbit', value: formatLength(lens.photonM), detail: '1.5 horizons' },
+      { label: `Shadow at ${(lens.distancePc / 1000).toFixed(2)} kpc`, value: formatMicroarcsec(lens.shadow), detail: 'angular diameter' },
+    );
+  } else if (lens) {
+    stats.push(
+      { label: 'Photon orbit', value: formatLength(lens.photonM), detail: '1.5 horizons' },
+      { label: `Shadow at ${(lens.distancePc / 1000).toFixed(2)} kpc`, value: formatMicroarcsec(lens.shadow), detail: 'angular diameter' },
     );
   }
 
@@ -268,8 +342,12 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
     formulas.unshift(...waveFormulas(wave));
   }
+  if (lens) formulas.unshift(...lensFormulas(lens));
 
   let motion = null;
+  if (lens) {
+    motion = 'The filaments are light, traced by photons. Aimed inside the critical impact parameter, a ray falls in. Aimed wider, it bends and escapes. The ring at one and a half horizons is the photon sphere.';
+  }
   if (wave) {
     motion = 'The spiral on the grid is that wave: it turns with the stars and the crests move outward. The height is a diagram of a stretch that, in the real wave, happens in the plane.';
   }
@@ -291,7 +369,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
       ? central
         ? `Central mass · companion ${partner.name}`
         : `Orbiting ${partner.name}`
-      : 'Alone on the sheet',
+      : lens
+        ? 'Lensing the rays drawn around it'
+        : 'Alone on the sheet',
     stats,
     formulas,
     motion,

@@ -64,6 +64,10 @@ const WAVE_SIM_2 = 760;
 const WAVE_SEP_M = 1.345e5;
 const waveBinary = binaryPair(WAVE_SIM_1, WAVE_SIM_2, WAVE_A);
 
+const LENS_RS = 2.35;
+const LENS_SOLAR = 4.3e6;
+const LENS_MASS = LENS_SOLAR * M_SUN;
+
 const planet = (partial) => ({
   kind: 'planet',
   trail: true,
@@ -362,6 +366,37 @@ export const PRESETS = [
         glow: '#7dffe0',
         glowScale: 3.3,
         ...waveBinary.b,
+      },
+    ],
+  },
+  {
+    id: 'lens',
+    name: 'Gravitational lens',
+    tagline: 'Light bends around a black hole. Aimed too close, it falls in.',
+    metersPerUnit: schwarzschildRadius(LENS_MASS) / LENS_RS,
+    camera: { position: [9, 16, 28], target: [-1.4, -6.2, 0.2] },
+    select: 'Black hole',
+    lens: true,
+    bodies: [
+      {
+        name: 'Black hole',
+        kind: 'blackhole',
+        massKg: LENS_MASS,
+        radiusM: schwarzschildRadius(LENS_MASS),
+        simMass: 480,
+        visualStrength: 1,
+        softening: 1,
+        radius: LENS_RS * 0.92,
+        displayHorizon: LENS_RS,
+        spin: 0.02,
+        trail: false,
+        style: 'blackhole',
+        glow: '#ff3ec8',
+        glowScale: 3.4,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
       },
     ],
   },

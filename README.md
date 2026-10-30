@@ -8,6 +8,10 @@ The black-hole preset drops the same grid into a Flamm throat, with an event hor
 
 The gravitational-wave preset keeps that grid and draws the quadrupole ripple of a neutron-star pair: a two-armed spiral, twice per orbit, with the crests moving outward.
 
+The gravitational-lens preset draws the null geodesics of a black hole on that same grid. Parallel rays come in from the left. Wide ones bend and escape. Rays aimed inside the critical impact parameter fall through the horizon, and a bright ring marks the photon sphere, where light can orbit.
+
+![Light rays bending around a black hole. Wide rays escape, close rays fall in, and the math panel reads the deflection](media/lens.png)
+
 ![Two neutron stars on the sheet, with the outgoing gravitational-wave ripple and the live wave math](media/waves.png)
 
 ![A magenta black hole, its wireframe throat, and an orbiting star](media/black-hole.png)
@@ -37,7 +41,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
-- Keys: `1`–`5` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
+- Keys: `1`–`6` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
 
 ## Presets
 
@@ -48,6 +52,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 | Black hole | A 4.3 million solar-mass horizon. The star orbits at seven Schwarzschild radii, so the throat is to scale with that orbit. |
 | Binary stars | 1.5 and 1.0 solar masses around a common barycenter. |
 | Gravitational waves | A 1.4 and 1.2 solar-mass neutron-star pair. The grid carries the quadrupole wave their orbit sheds: a two-armed spiral, twice per orbit, crests moving outward. |
+| Gravitational lens | Schwarzschild null geodesics around a 4.3 million solar-mass hole. Rays aimed inside \(b_c = 3\sqrt{3}\, r_s / 2\) fall in. The ring at \(1.5\, r_s\) is the photon sphere. |
 
 ## The math
 
@@ -68,6 +73,15 @@ On the gravitational-wave preset the panel also reads the live separation as a w
 - Time to merger for a circular orbit, from Peters’ formula
 
 The ripples are a diagram. Crests on the grid are drawn closer together than that true wavelength, so several fit in view, and the orbit is held steady instead of being played through the inspiral. The numbers stay in SI.
+
+On the gravitational-lens preset the panel reads the hole as a lens:
+
+- Photon sphere, \(r_\gamma = 3GM / c^2\)
+- Critical impact parameter, \(b_c = 3\sqrt{3}\, r_s / 2\)
+- Deflection of the outer drawn ray, compared with \(\alpha = 4GM / c^2 b\) and with a solar graze
+- Angular diameter of the shadow at the distance of the Galactic center
+
+The filaments lie on the embedding so they can be seen with the well. The bend itself is in the plane: those paths are the null geodesics, not tracks of things rolling downhill.
 
 The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, and a softened potential well for stars and planets. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
 

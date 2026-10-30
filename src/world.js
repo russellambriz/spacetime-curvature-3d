@@ -4,6 +4,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import {
   choosePixelRatio,
   GRID_SEGMENTS_DESKTOP,
@@ -13,6 +16,7 @@ import {
   MAX_BODIES,
 } from './constants.js';
 import { heightAt } from './height.js';
+import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { liveWave } from './waves.js';
 
 const GRID_CELL = 2.15;
@@ -472,6 +476,7 @@ export class World {
     this._buildSheet();
     this._buildBlackHoleExtras();
     this._buildSelectionRing();
+    this._buildLens();
     this._buildComposer();
     this.resize();
   }
@@ -761,6 +766,135 @@ export class World {
 
     this.tube = buildTube();
     this.scene.add(this.tube);
+  }
+
+  _buildLens() {
+    this.lensGroup = new THREE.Group();
+    this.lensGroup.visible = false;
+    this.lensGroup.frustumCulled = false;
+    this.scene.add(this.lensGroup);
+    this._viewSize = new THREE.Vector2();
+    this.lensMaterial = new LineMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      linewidth: 2.05,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.lensItems = UNIT_RAYS.map((ray) => {
+      const n = ray.x.length;
+      const positions = new Float32Array(n * 3);
+      const colors = new Float32Array(n * 3);
+      const total = ray.arc[n - 1] || 1;
+      for (let i = 0; i < n; i += 1) {
+        const r = Math.hypot(ray.x[i], ray.z[i]);
+        const along = ray.arc[i] / total;
+        let fade = 1;
+        if (along < 0.05) fade = along / 0.05;
+        if (!ray.captured && along > 0.88) fade = Math.min(fade, (1 - along) / 0.12);
+        fade = Math.max(0, fade);
+        const near = Math.max(0, Math.min(1, (5.2 - r) / 3.6));
+        let red = 0.4 + near * 0.5;
+        let green = 1.08 + near * 0.38;
+        let blue = 0.58 + near * 0.36;
+        if (ray.captured) {
+          const fall = Math.max(0, Math.min(1, (2.15 - r) / 1.05));
+          red += (1.42 - red) * fall;
+          green += (0.34 - green) * fall;
+          blue += (1.05 - blue) * fall;
+        }
+        const k = fade * (0.78 + near * 0.5);
+        colors[i * 3] = red * k;
+        colors[i * 3 + 1] = green * k;
+        colors[i * 3 + 2] = blue * k;
+      }
+      const geo = new LineGeometry();
+      geo.setColors(colors);
+      const line = new Line2(geo, this.lensMaterial);
+      line.frustumCulled = false;
+      line.renderOrder = 3;
+      line.raycast = () => {};
+      this.lensGroup.add(line);
+      const photons = [];
+      const count = total > 32 ? 3 : 2;
+      for (let p = 0; p < count; p += 1) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: this.glowTexture,
+          color: new THREE.Color(0.86, 1.32, 0.96),
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+          opacity: 0.95,
+        }));
+        sprite.frustumCulled = false;
+        sprite.renderOrder = 5;
+        sprite.raycast = () => {};
+        sprite.visible = false;
+        this.lensGroup.add(sprite);
+        photons.push(sprite);
+      }
+      return { ray, positions, line, photons };
+    });
+    this.lensSig = '';
+    this.lensTime = 0;
+  }
+
+  syncLens(state) {
+    this.lensGroup.visible = true;
+    const rs = liveLens.rs;
+    let sig = `${rs.toFixed(4)}|${liveLens.cx.toFixed(3)}|${liveLens.cz.toFixed(3)}`;
+    for (let i = 0; i < state.bodies.length; i += 1) {
+      const body = state.bodies[i];
+      sig += `|${body.x.toFixed(2)},${body.z.toFixed(2)},${body.visualStrength.toFixed(2)},${(body.displayHorizon || 0).toFixed(3)}`;
+    }
+    if (sig !== this.lensSig) {
+      this.lensSig = sig;
+      for (let i = 0; i < this.lensItems.length; i += 1) {
+        const item = this.lensItems[i];
+        const { ray, positions } = item;
+        for (let k = 0; k < ray.x.length; k += 1) {
+          const x = liveLens.cx + ray.x[k] * rs;
+          const z = liveLens.cz + ray.z[k] * rs;
+          positions[k * 3] = x;
+          positions[k * 3 + 1] = heightAt(x, z, state.bodies) + 0.12;
+          positions[k * 3 + 2] = z;
+        }
+        item.line.geometry.setPositions(positions);
+      }
+    }
+    const travel = this.lensTime * 5.2;
+    for (let i = 0; i < this.lensItems.length; i += 1) {
+      const item = this.lensItems[i];
+      const total = item.ray.arc[item.ray.arc.length - 1];
+      const count = item.photons.length;
+      for (let p = 0; p < count; p += 1) {
+        const sprite = item.photons[p];
+        const sample = sampleRay(item.ray, travel + (p / count) * total);
+        if (!sample) {
+          sprite.visible = false;
+          continue;
+        }
+        const x = liveLens.cx + sample.x * rs;
+        const z = liveLens.cz + sample.z * rs;
+        sprite.position.set(x, heightAt(x, z, state.bodies) + 0.2, z);
+        let fade = 1;
+        if (sample.t < 0.045) fade = sample.t / 0.045;
+        if (!item.ray.captured && sample.t > 0.9) fade = Math.min(fade, (1 - sample.t) / 0.1);
+        if (item.ray.captured && sample.r < 1.55) fade *= Math.max(0, (sample.r - 0.92) / 0.63);
+        const scale = Math.max(0, rs * 0.48 * fade);
+        sprite.scale.set(scale, scale, 1);
+        sprite.visible = scale > 0.04;
+        if (item.ray.captured && sample.r < 2.4) {
+          const u = Math.max(0, Math.min(1, (2.4 - sample.r) / 1.15));
+          sprite.material.color.setRGB(0.78 + 0.64 * u, 1.3 - 0.9 * u, 0.92 + 0.14 * u);
+        } else {
+          sprite.material.color.setRGB(0.88, 1.34, 0.98);
+        }
+      }
+    }
   }
 
   _buildSelectionRing() {
@@ -1201,6 +1335,14 @@ export class World {
     } else {
       this.waveUniform.w = 0;
     }
+
+    if (liveLens.enabled) {
+      this.disk.visible = false;
+      if (!state.paused && state.timeScale > 0) this.lensTime += dt * state.timeScale;
+      this.syncLens(state);
+    } else if (this.lensGroup) {
+      this.lensGroup.visible = false;
+    }
   }
 
   frameCamera(state, animate) {
@@ -1255,6 +1397,11 @@ export class World {
     this.composer.setPixelRatio(pr);
     this.composer.setSize(width, height);
     this.bloom.setSize(Math.max(1, Math.floor(width * pr * 0.5)), Math.max(1, Math.floor(height * pr * 0.5)));
+    if (this.lensMaterial) {
+      this.renderer.getSize(this._viewSize);
+      this.lensMaterial.resolution.copy(this._viewSize);
+      this.lensMaterial.linewidth = Math.min(width, height) < 700 ? 2.6 : 2.05;
+    }
   }
 
   clientToNdc(x, y) {

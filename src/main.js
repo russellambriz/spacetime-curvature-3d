@@ -12,6 +12,7 @@ import {
   selectedBody,
   setDraggedPosition,
 } from './sim.js';
+import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 
 const canvas = document.getElementById('scene');
@@ -326,6 +327,7 @@ function frame(now) {
   const before = drag?.moved ? drag.id : null;
   advance(state, dt, before);
   updateLiveWave(state);
+  updateLiveLens(state);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

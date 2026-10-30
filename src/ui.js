@@ -122,6 +122,9 @@ export class UI {
       ['p', 'A gravitational wave is not another well. A circular pair sheds a ripple at twice its orbital frequency, and the ripple travels outward at the speed of light:'],
       ['tex', 'f_{\\mathrm{GW}} = 2 f_{\\mathrm{orb}}'],
       ['p', 'The Gravitational waves preset draws that quadrupole pattern into this same grid. The spiral turns with the neutron stars, and the crests move out. The raised and lowered lines are a diagram: a real wave stretches and squeezes distances in the plane. Crests on screen are packed closer than the true wavelength so several fit in view. The math panel gives the real frequency, wavelength, strain at 40 Mpc, and time to merger.'],
+      ['p', 'Light bends even though it has no mass. The path is a null geodesic, and in the weak field the whole deflection depends on the miss distance the ray would have had:'],
+      ['tex', '\\alpha = \\dfrac{4GM}{c^{2} b}'],
+      ['p', 'A ray that grazes the Sun turns by 1.75 arcseconds, the shift measured in the 1919 eclipse. Closer in, that formula fails. Light can orbit on the photon sphere at 1.5 Schwarzschild radii, and a ray aimed inside b = 3√3 rₛ / 2 falls through the horizon. The Gravitational lens preset integrates those Schwarzschild geodesics and lays the paths on this grid. The filaments are not objects rolling into the well. The bend is in the plane; the drop is the spatial embedding of the same hole. Photons trace the paths so you can see which rays escape and which are captured.'],
     ];
     const root = document.getElementById('explain-body');
     for (let i = 0; i < blocks.length; i += 1) {
