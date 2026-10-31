@@ -12,6 +12,7 @@ import {
   R_VENUS,
   schwarzschildRadius,
 } from './constants.js';
+import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
 
 function orbit(distance, angle, centralMass) {
   const x = Math.cos(angle) * distance;
@@ -67,6 +68,13 @@ const waveBinary = binaryPair(WAVE_SIM_1, WAVE_SIM_2, WAVE_A);
 const LENS_RS = 2.35;
 const LENS_SOLAR = 4.3e6;
 const LENS_MASS = LENS_SOLAR * M_SUN;
+
+const DRAG_RS = 4.8;
+const DRAG_SOLAR = 6.5e9;
+const DRAG_MASS = DRAG_SOLAR * M_SUN;
+const DRAG_HORIZON = DRAG_RS * kerrHorizonOverRs(DRAG_SPIN);
+const DRAG_STAR_R = STAR_OVER_RS * DRAG_RS;
+const DRAG_SIM = 175;
 
 const planet = (partial) => ({
   kind: 'planet',
@@ -398,6 +406,59 @@ export const PRESETS = [
         z: 0,
         vx: 0,
         vz: 0,
+      },
+    ],
+  },
+  {
+    id: 'drag',
+    name: 'Frame dragging',
+    tagline: 'A spinning black hole drags the frames around it.',
+    metersPerUnit: schwarzschildRadius(DRAG_MASS) / DRAG_RS,
+    camera: { position: [18, 25, 28], target: [0.2, -22, 0.2] },
+    select: 'Black hole',
+    drag: true,
+    bodies: [
+      {
+        name: 'Black hole',
+        kind: 'blackhole',
+        massKg: DRAG_MASS,
+        radiusM: schwarzschildRadius(DRAG_MASS),
+        simMass: DRAG_SIM,
+        visualStrength: 1.35,
+        throatDepth: 16,
+        softening: 1,
+        radius: DRAG_HORIZON * 0.92,
+        displayHorizon: DRAG_HORIZON,
+        kerrSpin: DRAG_SPIN,
+        spin: 0.35,
+        trail: false,
+        style: 'blackhole',
+        glow: '#ff3ec8',
+        glowScale: 4.4,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
+      {
+        name: 'Star',
+        kind: 'star',
+        massKg: 2.4 * M_SUN,
+        radiusM: 1.7 * R_SUN,
+        simMass: DRAG_SIM * ((2.4 * M_SUN) / DRAG_MASS),
+        visualStrength: 1.15,
+        softening: 0.42,
+        radius: 0.52,
+        spin: 0.4,
+        trail: true,
+        trailWidth: 0.14,
+        trailColor: [0.45, 0.72, 1.55],
+        style: 'sun',
+        core: [0.82, 0.92, 1.25],
+        limb: [0.22, 0.4, 0.95],
+        glow: '#9ecbff',
+        glowScale: 3.1,
+        ...orbit(DRAG_STAR_R, 1.05, DRAG_SIM),
       },
     ],
   },

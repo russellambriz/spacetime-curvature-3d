@@ -9,6 +9,7 @@ import {
   schwarzschildRadius,
   sci,
 } from './constants.js';
+import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
 import { WAVE_OBSERVER_MPC, waveMetrics } from './waves.js';
 
@@ -112,6 +113,41 @@ function formatMicroarcsec(radians) {
   return `${uas.toFixed(2)} μas`;
 }
 
+function dragFormulas(drag) {
+  const where = drag.partnerName ? `at ${drag.partnerName}` : 'at 2.55 Schwarzschild radii';
+  const weak = formatDuration(drag.weakPeriod);
+  return [
+    {
+      key: 'drag-spin',
+      title: 'Spin',
+      tex: '\\hat{a} = \\dfrac{J c}{G M^{2}}',
+      value: drag.spin.toFixed(2),
+      note: 'Zero is a Schwarzschild hole. One is the fastest Kerr spin. 0.90 is a high spin of the kind discussed for M87*. The mass here is about 6.5 billion suns, M87*’s.',
+    },
+    {
+      key: 'drag-horizon',
+      title: 'Kerr horizon',
+      tex: 'r_{+} = \\dfrac{r_{s}}{2}\\left(1 + \\sqrt{1 - \\hat{a}^{2}}\\right)',
+      value: formatLength(drag.horizonM),
+      note: `Inside the Schwarzschild radius ${formatLength(drag.rs)}. Spin pulls the horizon in. The closest stable prograde orbit moves in too, from 3 rₛ at zero spin to ${formatLength(drag.iscoM)} here. The star orbits outside that.`,
+    },
+    {
+      key: 'drag-ergo',
+      title: 'Ergosphere, equator',
+      tex: 'r_{E} = \\dfrac{r_{s}}{2}\\left(1 + \\sqrt{1 - \\hat{a}^{2}\\cos^{2}\\theta}\\right)',
+      value: formatLength(drag.ergoM),
+      note: 'On the equator the square root is 1, so the static limit is exactly one Schwarzschild radius. That is the amber ring. Inside it, nothing can hover relative to the distant stars. At the poles it meets the horizon.',
+    },
+    {
+      key: 'drag-omega',
+      title: `Frame dragging ${where}`,
+      tex: '\\Omega = \\dfrac{2 M a r}{(r^{2}+a^{2})^{2} - \\Delta a^{2}}',
+      value: formatDuration(drag.period),
+      note: `One turn of a local inertial frame ${where}. Δ = r² − 2Mr + a², and a = â GM/c². Far away this is 2GJ/(c²r³), which gives ${weak} here. At the horizon the drag period is ${formatDuration(drag.horizonPeriod)}.`,
+    },
+  ];
+}
+
 function lensFormulas(lens) {
   const kpc = (lens.distancePc / 1000).toFixed(2);
   return [
@@ -184,11 +220,17 @@ export function buildReadout(body, bodies, metersPerUnit) {
   const partner = partnerOf(body, bodies);
   const central = isCentral(body, partner);
   const rsSelf = schwarzschildRadius(body.massKg);
+  const drag = dragMetrics(bodies, metersPerUnit);
   const formulas = [];
+  const spinningHole = Boolean(drag) && body.kind === 'blackhole' && body.kerrSpin > 0;
 
   const stats = [
     { label: 'Mass', value: formatMass(body.massKg), detail: `${sci(body.massKg, 3)} kg` },
-    { label: body.kind === 'blackhole' ? 'Horizon' : 'Radius', value: formatLength(body.kind === 'blackhole' ? rsSelf : body.radiusM) },
+    {
+      label: body.kind === 'blackhole' ? 'Horizon' : 'Radius',
+      value: formatLength(spinningHole ? drag.horizonM : body.kind === 'blackhole' ? rsSelf : body.radiusM),
+      detail: spinningHole ? `spin ${drag.spin.toFixed(2)}` : '',
+    },
   ];
 
   if (partner) {
@@ -216,14 +258,17 @@ export function buildReadout(body, bodies, metersPerUnit) {
       note: `M = ${formatMass(M)}, m = ${formatMass(m)}, r = ${formatLength(r)}.`,
     });
 
+    const orbitNote = central
+      ? `Circular speed of ${who} about ${host} at the current separation.`
+      : `Circular speed about ${host}. M = ${formatMass(M)}.`;
     formulas.push({
       key: 'vorbit',
       title: central ? `Orbital velocity of ${who}` : 'Orbital velocity',
       tex: 'v = \\sqrt{\\dfrac{GM}{r}}',
       value: formatSpeed(vCirc),
-      note: central
-        ? `Circular speed of ${who} about ${host} at the current separation.`
-        : `Circular speed about ${host}. M = ${formatMass(M)}.`,
+      note: drag
+        ? `${orbitNote} This close in, that Newtonian speed is only a sketch of the Kerr orbit.`
+        : orbitNote,
     });
 
     formulas.push({
@@ -242,25 +287,31 @@ export function buildReadout(body, bodies, metersPerUnit) {
         title: 'Schwarzschild radius',
         tex: 'r_{s} = \\dfrac{2GM}{c^{2}}',
         value: formatLength(rsSelf),
-        note: body.kind === 'blackhole'
-          ? 'The event horizon of an uncharged, non-spinning black hole.'
-          : `The horizon this mass would have if it were compressed inside ${formatLength(rsSelf)}.`,
+        note: spinningHole
+          ? `The horizon at zero spin. With â = ${drag.spin.toFixed(2)} the horizon is smaller: ${formatLength(drag.horizonM)}.`
+          : body.kind === 'blackhole'
+            ? 'The event horizon of an uncharged, non-spinning black hole.'
+            : `The horizon this mass would have if it were compressed inside ${formatLength(rsSelf)}.`,
       });
       formulas.push({
         key: 'dilation',
         title: 'Gravitational time dilation',
         tex: '\\dfrac{\\Delta\\tau}{\\Delta t} = \\sqrt{1 - \\dfrac{r_{s}}{r}}',
-        value: dilationValue(rsSelf, surfaceR),
-        note: dilationNote(rsSelf, surfaceR, body.kind === 'blackhole' ? 'at the horizon' : 'on the surface'),
+        value: dilationValue(rsSelf, spinningHole ? rsSelf * 1.01 : surfaceR),
+        note: spinningHole
+          ? 'Schwarzschild factor at 1.01 rₛ. This formula is not the Kerr redshift. The horizon above is inward of rₛ, and a hovering clock still slows without bound as it approaches r₊.'
+          : dilationNote(rsSelf, surfaceR, body.kind === 'blackhole' ? 'at the horizon' : 'on the surface'),
       });
       formulas.push({
         key: 'escape',
         title: body.kind === 'blackhole' ? 'Escape velocity at the horizon' : 'Surface escape velocity',
         tex: 'v_{\\mathrm{esc}} = \\sqrt{\\dfrac{2GM}{r}}',
         value: formatSpeed(vSurface),
-        note: body.kind === 'blackhole'
-          ? 'Newtonian escape speed at r = rₛ is exactly c. Light on the horizon is marginally bound.'
-          : `Escape speed from the surface of ${body.name}. At the companion's distance it is ${formatSpeed(vEsc)}.`,
+        note: spinningHole
+          ? 'Newtonian escape speed at r = rₛ is c. The spinning horizon is smaller, and inside the ergosphere light is dragged even while it is still outside that horizon.'
+          : body.kind === 'blackhole'
+            ? 'Newtonian escape speed at r = rₛ is exactly c. Light on the horizon is marginally bound.'
+            : `Escape speed from the surface of ${body.name}. At the companion's distance it is ${formatSpeed(vEsc)}.`,
       });
     } else {
       formulas.push({
@@ -298,7 +349,11 @@ export function buildReadout(body, bodies, metersPerUnit) {
         title: 'Schwarzschild radius',
         tex: 'r_{s} = \\dfrac{2GM}{c^{2}}',
         value: formatLength(rsSelf),
-        note: hole ? 'The event horizon of an uncharged, non-spinning black hole.' : '',
+        note: spinningHole
+          ? `The horizon at zero spin. With â = ${drag.spin.toFixed(2)} the horizon is smaller: ${formatLength(drag.horizonM)}.`
+          : hole
+            ? 'The event horizon of an uncharged, non-spinning black hole.'
+            : '',
       },
       {
         key: 'dilation',
@@ -312,9 +367,11 @@ export function buildReadout(body, bodies, metersPerUnit) {
         title: hole ? 'Escape velocity at the horizon' : 'Escape velocity',
         tex: 'v_{\\mathrm{esc}} = \\sqrt{\\dfrac{2GM}{r}}',
         value: formatSpeed(vSurface),
-        note: hole
-          ? 'Newtonian escape speed at r = rₛ is exactly c. Light on the horizon is marginally bound.'
-          : 'From the surface, to infinity.',
+        note: spinningHole
+          ? 'Newtonian escape speed at r = rₛ is c. The spinning horizon is smaller, and inside the ergosphere light is dragged even while it is still outside that horizon.'
+          : hole
+            ? 'Newtonian escape speed at r = rₛ is exactly c. Light on the horizon is marginally bound.'
+            : 'From the surface, to infinity.',
       },
     );
   }
@@ -343,10 +400,21 @@ export function buildReadout(body, bodies, metersPerUnit) {
     formulas.unshift(...waveFormulas(wave));
   }
   if (lens) formulas.unshift(...lensFormulas(lens));
+  if (drag) {
+    stats.push(
+      { label: 'Spin â', value: drag.spin.toFixed(2), detail: 'Kerr parameter' },
+      { label: 'Frame drag', value: formatDuration(drag.period), detail: drag.partnerName ? `one turn at ${drag.partnerName}` : 'one turn' },
+    );
+    formulas.unshift(...dragFormulas(drag));
+  }
 
   let motion = null;
   if (lens) {
     motion = 'The filaments are light, traced by photons. Aimed inside the critical impact parameter, a ray falls in. Aimed wider, it bends and escapes. The ring at one and a half horizons is the photon sphere.';
+  }
+  if (drag) {
+    const line = 'The ticks are local inertial frames, and closer ones are dragged ahead. The grid holds a readable spiral of that same whirl. The amber ring is the ergosphere. The magenta ring inside it is the horizon.';
+    motion = motion ? `${motion} ${line}` : line;
   }
   if (wave) {
     motion = 'The spiral on the grid is that wave: it turns with the stars and the crests move outward. The height is a diagram of a stretch that, in the real wave, happens in the plane.';
@@ -367,11 +435,15 @@ export function buildReadout(body, bodies, metersPerUnit) {
     name: body.name,
     subtitle: partner
       ? central
-        ? `Central mass · companion ${partner.name}`
+        ? spinningHole
+          ? `Spin â = ${drag.spin.toFixed(2)} · companion ${partner.name}`
+          : `Central mass · companion ${partner.name}`
         : `Orbiting ${partner.name}`
-      : lens
-        ? 'Lensing the rays drawn around it'
-        : 'Alone on the sheet',
+      : spinningHole
+        ? `Spinning at â = ${drag.spin.toFixed(2)}`
+        : lens
+          ? 'Lensing the rays drawn around it'
+          : 'Alone on the sheet',
     stats,
     formulas,
     motion,

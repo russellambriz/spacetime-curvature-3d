@@ -12,6 +12,7 @@ import {
   selectedBody,
   setDraggedPosition,
 } from './sim.js';
+import { updateLiveDrag } from './drag.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 
@@ -328,6 +329,7 @@ function frame(now) {
   advance(state, dt, before);
   updateLiveWave(state);
   updateLiveLens(state);
+  updateLiveDrag(state, dt);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

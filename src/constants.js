@@ -89,7 +89,7 @@ export function formatLength(meters) {
   if (!Number.isFinite(meters)) return '—';
   const abs = Math.abs(meters);
   const au = meters / AU;
-  if (abs >= 0.02 * AU && abs < 200 * AU) {
+  if (abs >= 0.02 * AU && abs < 800 * AU) {
     const places = Math.abs(au) >= 10 ? 2 : 3;
     return `${au.toFixed(places)} AU`;
   }

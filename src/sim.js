@@ -2,6 +2,7 @@ import { M_EARTH, R_EARTH, MAX_BODIES, schwarzschildRadius } from './constants.j
 import { getPreset } from './presets.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
+import { updateLiveDrag } from './drag.js';
 
 const GRAVITY_SOFT = 0.55;
 const GRAVITY_SOFT2 = GRAVITY_SOFT * GRAVITY_SOFT;
@@ -44,6 +45,7 @@ export function createBody(spec) {
     displayHorizon: spec.displayHorizon ?? 0,
     baseHorizon: spec.baseHorizon ?? spec.displayHorizon ?? 0,
     throatDepth: spec.throatDepth ?? 0,
+    kerrSpin: spec.kerrSpin ?? 0,
     x: spec.x,
     z: spec.z,
     vx: spec.vx ?? 0,
@@ -82,6 +84,7 @@ export function createState(presetId = 'sun-earth') {
     tagline: '',
     wave: null,
     lens: false,
+    drag: false,
   };
 }
 
@@ -98,6 +101,7 @@ export function loadPreset(state, presetId) {
     ? { amp: preset.wave.amp, k: preset.wave.k, inner: preset.wave.inner }
     : null;
   state.lens = Boolean(preset.lens);
+  state.drag = Boolean(preset.drag);
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
@@ -106,6 +110,7 @@ export function loadPreset(state, presetId) {
   computeAccelerations(state.bodies);
   updateLiveWave(state);
   updateLiveLens(state);
+  updateLiveDrag(state, 0);
   return state;
 }
 

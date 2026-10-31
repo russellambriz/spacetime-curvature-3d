@@ -22,6 +22,7 @@ import {
   THROAT_SHAPE,
   heightAt,
 } from './height.js';
+import { TICK_RINGS, liveDrag } from './drag.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { liveWave } from './waves.js';
 
@@ -62,9 +63,12 @@ uniform vec4 uBody[${MAX_BODIES}];
 uniform vec4 uExtra[${MAX_BODIES}];
 uniform vec4 uWave;
 uniform vec4 uWaveParams;
+uniform vec4 uDrag;
+uniform vec4 uDragScale;
 varying vec2 vGrid;
 varying float vHeight;
 varying float vWave;
+varying float vShear;
 varying float vBh;
 varying float vAbyss;
 varying vec3 vWorld;
@@ -143,9 +147,28 @@ void main() {
   vec3 pos = position;
   float h = sheetHeight(pos.xz);
   float w = sampleWave(pos.xz);
-  vGrid = gPinch;
+  vec2 grid = gPinch;
+  float shear = 0.0;
+  if (uDrag.w > 0.5) {
+    vec2 rel = grid - uDrag.xy;
+    float r = length(rel);
+    float rRef = max(uDragScale.x, 0.001);
+    float rH = max(uDragScale.y, 0.001);
+    float rUse = max(r, rRef * 0.7);
+    float fall = min(pow(rRef / rUse, 3.0), 2.6);
+    float env = uDrag.z / (0.85 + uDrag.z);
+    float band = smoothstep(rH * 1.04, rH * 1.2, r);
+    band *= 1.0 - smoothstep(rRef * 4.6, rRef * 7.6, r);
+    float ang = 1.7 * env * fall * band;
+    float c = cos(ang);
+    float s = sin(ang);
+    grid = uDrag.xy + vec2(c * rel.x - s * rel.y, s * rel.x + c * rel.y);
+    shear = band * min(fall, 1.7) / 1.7;
+  }
+  vGrid = grid;
   vHeight = h;
   vWave = w;
+  vShear = shear;
   vAbyss = gAbyss;
   pos.xz = gPinch;
   pos.y = h + w;
@@ -159,6 +182,7 @@ const SHEET_FRAG = /* glsl */ `
 varying vec2 vGrid;
 varying float vHeight;
 varying float vWave;
+varying float vShear;
 varying float vBh;
 varying float vAbyss;
 varying vec3 vWorld;
@@ -191,6 +215,7 @@ void main() {
   float waveLift = 1.0 + clamp(vWave * 0.42, -0.58, 1.35);
   float crest = clamp(vWave * 0.22, 0.0, 0.5);
   col = mix(col, vec3(0.78, 1.28, 0.96), crest);
+  col *= 1.0 + clamp(vShear, 0.0, 1.0) * 0.5;
   col *= line * fade * (0.7 + slope * 0.65) * waveLift * (1.0 - abyss);
   if (line * fade < 0.028) discard;
   gl_FragColor = vec4(col, 1.0);
@@ -512,6 +537,8 @@ export class World {
     this.extraUniforms = Array.from({ length: MAX_BODIES }, () => new THREE.Vector4());
     this.waveUniform = new THREE.Vector4(0, 0, 0, 0);
     this.waveParamsUniform = new THREE.Vector4(0, 0.4, 1, 0);
+    this.dragUniform = new THREE.Vector4(0, 0, 0, 0);
+    this.dragScaleUniform = new THREE.Vector4(1, 0.7, 0, 0);
     this._ndc = new THREE.Vector2();
     this._hit = new THREE.Vector3();
     this._planeHit = new THREE.Vector3();
@@ -580,6 +607,7 @@ export class World {
     this._buildBlackHoleExtras();
     this._buildSelectionRing();
     this._buildLens();
+    this._buildDrag();
     this._buildComposer();
     this.resize();
   }
@@ -733,6 +761,8 @@ export class World {
         uExtra: { value: this.extraUniforms },
         uWave: { value: this.waveUniform },
         uWaveParams: { value: this.waveParamsUniform },
+        uDrag: { value: this.dragUniform },
+        uDragScale: { value: this.dragScaleUniform },
         uHalf: { value: GRID_SIZE * 0.5 },
         uCell: { value: GRID_CELL },
       },
@@ -871,6 +901,156 @@ export class World {
     this.scene.add(this.tube);
     this.abyss = buildAbyss();
     this.scene.add(this.abyss);
+  }
+
+  _buildDrag() {
+    this.dragGroup = new THREE.Group();
+    this.dragGroup.visible = false;
+    this.dragGroup.frustumCulled = false;
+    this.scene.add(this.dragGroup);
+
+    const ringShader = (lineColor, glowColor, tight, loose) => new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+      vertexShader: /* glsl */ `
+        varying vec2 vLocal;
+        void main() {
+          vLocal = position.xy;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vLocal;
+        void main() {
+          float r = length(vLocal);
+          float line = exp(-pow((r - 1.0) * ${tight}, 2.0));
+          float glow = exp(-pow((r - 1.0) * ${loose}, 2.0));
+          vec3 col = vec3(${lineColor}) * line * 2.15 + vec3(${glowColor}) * glow * 0.62;
+          if (line + glow < 0.05) discard;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+
+    this.horizonRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1.12, 160),
+      ringShader('1.45, 0.38, 1.12', '0.72, 0.12, 0.55', '52.0', '12.0'),
+    );
+    this.ergoRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.84, 1.16, 192),
+      ringShader('1.58, 0.96, 0.32', '1.12, 0.48, 0.1', '36.0', '8.0'),
+    );
+    for (const ring of [this.horizonRing, this.ergoRing]) {
+      ring.rotation.x = -Math.PI / 2;
+      ring.frustumCulled = false;
+      ring.renderOrder = 3;
+      ring.raycast = () => {};
+      this.dragGroup.add(ring);
+    }
+
+    let quads = 0;
+    this.dragRings = TICK_RINGS.map((spec) => {
+      const start = quads;
+      quads += spec.count * 2;
+      return { ...spec, start };
+    });
+    const positions = new Float32Array(quads * 18);
+    const colors = new Float32Array(quads * 18);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+    this.dragPositions = positions;
+    this.dragColors = colors;
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+      vertexShader: /* glsl */ `
+        attribute vec3 aColor;
+        varying vec3 vColor;
+        void main() {
+          vColor = aColor;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec3 vColor;
+        void main() {
+          gl_FragColor = vec4(vColor, 1.0);
+        }
+      `,
+    });
+    this.dragTicks = new THREE.Mesh(geo, mat);
+    this.dragTicks.frustumCulled = false;
+    this.dragTicks.renderOrder = 4;
+    this.dragTicks.raycast = () => {};
+    this.dragGroup.add(this.dragTicks);
+  }
+
+  _placeRing(ring, x, z, radius, bodies, lift) {
+    const y = heightAt(x + radius, z, bodies) + lift;
+    ring.position.set(x, y, z);
+    ring.scale.set(radius, radius, radius);
+  }
+
+  syncDrag(state) {
+    this.dragGroup.visible = true;
+    const { cx, cz, phase, rRef, rHorizon } = liveDrag;
+    this._placeRing(this.horizonRing, cx, cz, Math.max(rHorizon * 1.02, 0.08), state.bodies, 0.05);
+    this._placeRing(this.ergoRing, cx, cz, rRef, state.bodies, 0.08);
+    const positions = this.dragPositions;
+    const colors = this.dragColors;
+    const writeQuad = (index, cx0, cy, cz0, tx, tz, px, pz, color) => {
+      const verts = [
+        cx0 - tx - px, cy, cz0 - tz - pz,
+        cx0 + tx - px, cy, cz0 + tz - pz,
+        cx0 + tx + px, cy, cz0 + tz + pz,
+        cx0 - tx - px, cy, cz0 - tz - pz,
+        cx0 + tx + px, cy, cz0 + tz + pz,
+        cx0 - tx + px, cy, cz0 - tz + pz,
+      ];
+      positions.set(verts, index * 18);
+      for (let k = 0; k < 6; k += 1) {
+        colors[index * 18 + k * 3] = color[0];
+        colors[index * 18 + k * 3 + 1] = color[1];
+        colors[index * 18 + k * 3 + 2] = color[2];
+      }
+    };
+    for (let ringIndex = 0; ringIndex < this.dragRings.length; ringIndex += 1) {
+      const spec = this.dragRings[ringIndex];
+      const radius = rRef * spec.mul;
+      const fall = (1 / spec.mul) ** 3;
+      const halfLen = rRef * spec.span;
+      const halfW = Math.max(0.02, rRef * 0.011);
+      const y = heightAt(cx + radius, cz, state.bodies) + 0.14;
+      for (let i = 0; i < spec.count; i += 1) {
+        const theta = (i / spec.count) * Math.PI * 2 + phase * fall;
+        const c = Math.cos(theta);
+        const s = Math.sin(theta);
+        const px = cx + c * radius;
+        const pz = cz + s * radius;
+        const base = spec.start + i * 2;
+        writeQuad(base, px, y, pz, -s * halfLen, c * halfLen, c * halfW, s * halfW, spec.color);
+        writeQuad(
+          base + 1,
+          px,
+          y,
+          pz,
+          c * halfLen * 0.62,
+          s * halfLen * 0.62,
+          -s * halfW,
+          c * halfW,
+          spec.color,
+        );
+      }
+    }
+    this.dragTicks.geometry.attributes.position.needsUpdate = true;
+    this.dragTicks.geometry.attributes.aColor.needsUpdate = true;
   }
 
   _buildLens() {
@@ -1458,6 +1638,19 @@ export class World {
       this.waveParamsUniform.set(liveWave.amp, liveWave.k, Math.max(liveWave.inner, 0.001), 0);
     } else {
       this.waveUniform.w = 0;
+    }
+
+    if (liveDrag.enabled) {
+      this.dragUniform.set(liveDrag.cx, liveDrag.cz, Math.min(liveDrag.phase, 40), 1);
+      this.dragScaleUniform.set(liveDrag.rRef, liveDrag.rHorizon, 0, 0);
+      this.disk.visible = false;
+      this.photon.visible = false;
+      this.sharpRing.visible = false;
+      this.tube.visible = false;
+      this.syncDrag(state);
+    } else if (this.dragGroup) {
+      this.dragUniform.w = 0;
+      this.dragGroup.visible = false;
     }
 
     if (liveLens.enabled) {
