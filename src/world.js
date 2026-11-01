@@ -24,6 +24,8 @@ import {
 } from './height.js';
 import { TICK_RINGS, liveDrag } from './drag.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
+import { livePrecess, writeNewtonEllipse } from './precess.js';
+import { traceOrbitBackward } from './sim.js';
 import { liveWave } from './waves.js';
 
 const GRID_CELL = 2.15;
@@ -282,8 +284,8 @@ function sheetGeometry(size, segments) {
 }
 
 class Trail {
-  constructor(color, width) {
-    this.max = 640;
+  constructor(color, width, max = 640) {
+    this.max = max;
     this.width = width;
     this.color = color;
     this.samples = [];
@@ -400,6 +402,91 @@ class Trail {
   dispose() {
     this.geo.dispose();
     this.material.dispose();
+  }
+}
+
+class Ribbon {
+  constructor(color, width, max, even = false) {
+    this.color = color;
+    this.width = width;
+    this.max = max;
+    this.even = even;
+    const positions = new Float32Array(max * 2 * 3);
+    const colors = new Float32Array(max * 2 * 3);
+    const indices = [];
+    for (let i = 0; i < max - 1; i += 1) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.geo.setIndex(indices);
+    this.geo.setDrawRange(0, 0);
+    this.material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+    });
+    this.mesh = new THREE.Mesh(this.geo, this.material);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 3;
+    this.mesh.raycast = () => {};
+  }
+
+  setPoints(flat) {
+    const n = Math.min(this.max, Math.floor(flat.length / 3));
+    if (n < 2) {
+      this.mesh.visible = false;
+      return;
+    }
+    this.mesh.visible = true;
+    const pos = this.geo.attributes.position.array;
+    const col = this.geo.attributes.color.array;
+    const width = this.width;
+    let prevPx = 0;
+    let prevPz = 0;
+    for (let i = 0; i < n; i += 1) {
+      const x = flat[i * 3];
+      const y = flat[i * 3 + 1];
+      const z = flat[i * 3 + 2];
+      const i0 = Math.max(0, i - 1);
+      const i1 = Math.min(n - 1, i + 1);
+      let dx = flat[i1 * 3] - flat[i0 * 3];
+      let dz = flat[i1 * 3 + 2] - flat[i0 * 3 + 2];
+      const len = Math.hypot(dx, dz) || 1;
+      dx /= len;
+      dz /= len;
+      let px = -dz;
+      let pz = dx;
+      if (i > 0 && px * prevPx + pz * prevPz < 0) {
+        px = -px;
+        pz = -pz;
+      }
+      prevPx = px;
+      prevPz = pz;
+      const along = n === 1 ? 1 : i / (n - 1);
+      const fade = this.even ? 0.95 : 0.35 + 0.65 * along;
+      const o = i * 6;
+      pos[o] = x + px * width;
+      pos[o + 1] = y;
+      pos[o + 2] = z + pz * width;
+      pos[o + 3] = x - px * width;
+      pos[o + 4] = y;
+      pos[o + 5] = z - pz * width;
+      col[o] = this.color[0] * fade;
+      col[o + 1] = this.color[1] * fade;
+      col[o + 2] = this.color[2] * fade;
+      col[o + 3] = col[o];
+      col[o + 4] = col[o + 1];
+      col[o + 5] = col[o + 2];
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
+    this.geo.setDrawRange(0, (n - 1) * 6);
   }
 }
 
@@ -608,6 +695,7 @@ export class World {
     this._buildSelectionRing();
     this._buildLens();
     this._buildDrag();
+    this._buildPrecess();
     this._buildComposer();
     this.resize();
   }
@@ -1053,6 +1141,116 @@ export class World {
     this.dragTicks.geometry.attributes.aColor.needsUpdate = true;
   }
 
+  _buildPrecess() {
+    this.precessGroup = new THREE.Group();
+    this.precessGroup.visible = false;
+    this.precessGroup.frustumCulled = false;
+    this.scene.add(this.precessGroup);
+    this.ellipseRibbon = new Ribbon([0.72, 1.05, 1.22], 0.11, 192, true);
+    this.spokeRibbon = new Ribbon([0.35, 1.2, 0.62], 0.1, 40, true);
+    this.precessGroup.add(this.ellipseRibbon.mesh);
+    this.precessGroup.add(this.spokeRibbon.mesh);
+    this.ellipseXZ = new Float32Array(160 * 2);
+    this.ellipseFlat = new Float32Array(161 * 3);
+    this.spokeFlat = new Float32Array(28 * 3);
+    this.periMarks = [];
+    for (let i = 0; i < 6; i += 1) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.glowTexture,
+        color: new THREE.Color(0.28, 0.95, 0.55),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+        opacity: 0.92,
+      }));
+      sprite.frustumCulled = false;
+      sprite.renderOrder = 5;
+      sprite.raycast = () => {};
+      sprite.visible = false;
+      sprite.scale.set(0.85, 0.85, 1);
+      this.precessGroup.add(sprite);
+      this.periMarks.push(sprite);
+    }
+  }
+
+  syncPrecess(state) {
+    if (!livePrecess.enabled) {
+      this.precessGroup.visible = false;
+      return;
+    }
+    this.precessGroup.visible = true;
+    const cx = livePrecess.cx;
+    const cz = livePrecess.cz;
+    writeNewtonEllipse(cx, cz, this.ellipseXZ);
+    const count = this.ellipseXZ.length / 2;
+    const flat = this.ellipseFlat;
+    for (let i = 0; i <= count; i += 1) {
+      const k = i % count;
+      const x = this.ellipseXZ[k * 2];
+      const z = this.ellipseXZ[k * 2 + 1];
+      const o = i * 3;
+      flat[o] = x;
+      flat[o + 1] = heightAt(x, z, state.bodies) + 0.32;
+      flat[o + 2] = z;
+    }
+    this.ellipseRibbon.setPoints(flat);
+
+    const el = livePrecess.elements;
+    const spoke = this.spokeFlat;
+    let spokeOn = false;
+    if (el && el.e > 0.04 && el.p > 0.5 && el.e < 0.95) {
+      const eLen = Math.hypot(el.ex, el.ez) || 1;
+      const dirX = el.ex / eLen;
+      const dirZ = el.ez / eLen;
+      const rp = el.p / (1 + el.e);
+      // A short tick across the perihelion, out on the sheet. A radius line
+      // would dive into the sun's well and read as a spike through the star.
+      const inner = Math.max(2.2, rp * 0.78);
+      const outer = rp * 1.16;
+      const n = spoke.length / 3;
+      for (let i = 0; i < n; i += 1) {
+        const t = i / (n - 1);
+        const rad = inner + (outer - inner) * t;
+        const x = cx + dirX * rad;
+        const z = cz + dirZ * rad;
+        spoke[i * 3] = x;
+        spoke[i * 3 + 1] = heightAt(x, z, state.bodies) + 0.4;
+        spoke[i * 3 + 2] = z;
+      }
+      this.spokeRibbon.setPoints(spoke);
+      spokeOn = true;
+    }
+    if (!spokeOn) this.spokeRibbon.mesh.visible = false;
+
+    const marks = livePrecess.markers;
+    let currentMark = 0;
+    if (el && marks.length) {
+      let best = -Infinity;
+      for (let i = 0; i < marks.length; i += 1) {
+        const dot = marks[i].ox * el.ex + marks[i].oz * el.ez;
+        if (dot > best) {
+          best = dot;
+          currentMark = i;
+        }
+      }
+    }
+    for (let i = 0; i < this.periMarks.length; i += 1) {
+      const sprite = this.periMarks[i];
+      const mark = marks[i];
+      if (!mark) {
+        sprite.visible = false;
+        continue;
+      }
+      const x = cx + mark.ox;
+      const z = cz + mark.oz;
+      sprite.visible = true;
+      sprite.position.set(x, heightAt(x, z, state.bodies) + 0.42, z);
+      const scale = i === currentMark ? 1.25 : 0.72;
+      sprite.scale.set(scale, scale, 1);
+    }
+  }
+
   _buildLens() {
     this.lensGroup = new THREE.Group();
     this.lensGroup.visible = false;
@@ -1381,8 +1579,36 @@ export class World {
     return this.bhMaterial;
   }
 
-  seedTrail(view, bodies) {
+  seedTrail(view, state) {
+    const bodies = state.bodies;
     const body = view.body;
+    if (livePrecess.enabled && body.id === livePrecess.planetId) {
+      const traced = traceOrbitBackward(bodies, 5.15);
+      if (traced && traced.offsets.length >= 6) {
+        const samples = [];
+        const n = traced.offsets.length / 2;
+        for (let i = 0; i < n; i += 1) {
+          const x = traced.cx + traced.offsets[i * 2];
+          const z = traced.cz + traced.offsets[i * 2 + 1];
+          samples.push(x, heightAt(x, z, bodies, body.id) + 0.16, z);
+        }
+        const cap = view.trail.max * 3;
+        if (samples.length > cap) samples.splice(0, samples.length - cap);
+        samples[samples.length - 3] = body.x;
+        samples[samples.length - 2] = heightAt(body.x, body.z, bodies, body.id) + 0.16;
+        samples[samples.length - 1] = body.z;
+        view.trail.samples = samples;
+        view.trail.last = [body.x, samples[samples.length - 2], body.z];
+        view.trail.dirty = true;
+        view.trail.rebuild();
+        view.seeded = true;
+        livePrecess.markers = traced.markers;
+        if (Number.isFinite(traced.measured) && traced.measured > 0) {
+          livePrecess.measuredAdvance = traced.measured;
+        }
+        return;
+      }
+    }
     let cx = 0;
     let cz = 0;
     let mass = 0;
@@ -1482,7 +1708,7 @@ export class World {
       group.add(mesh);
       group.add(pick);
       group.add(glow);
-      const trail = new Trail(body.trailColor, body.trailWidth);
+      const trail = new Trail(body.trailColor, body.trailWidth, body.trailPoints || 640);
       this.scene.add(group);
       this.scene.add(trail.mesh);
       this.views.push({
@@ -1565,7 +1791,7 @@ export class World {
       view.mesh.rotation.z = body.tilt || 0;
       if (body.trail) {
         if (!view.seeded && Math.hypot(body.vx, body.vz) > 0.02) {
-          this.seedTrail(view, state.bodies);
+          this.seedTrail(view, state);
         }
         const record = !state.paused || dragging === body.id;
         if (record) {
@@ -1660,6 +1886,8 @@ export class World {
     } else if (this.lensGroup) {
       this.lensGroup.visible = false;
     }
+
+    this.syncPrecess(state);
   }
 
   frameCamera(state, animate) {

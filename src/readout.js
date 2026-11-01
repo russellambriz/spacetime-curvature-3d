@@ -11,6 +11,7 @@ import {
 } from './constants.js';
 import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
+import { precessMetrics } from './precess.js';
 import { WAVE_OBSERVER_MPC, waveMetrics } from './waves.js';
 
 function partnerOf(body, bodies) {
@@ -104,6 +105,15 @@ function formatAngle(radians) {
   return `${deg.toFixed(1)}°`;
 }
 
+function formatArcsec(radians) {
+  if (!Number.isFinite(radians)) return '—';
+  const arcsec = Math.abs(radians) * (180 / Math.PI) * 3600;
+  const sign = radians < 0 ? '−' : '';
+  if (arcsec >= 100) return `${sign}${arcsec.toFixed(0)}″`;
+  if (arcsec >= 1) return `${sign}${arcsec.toFixed(2)}″`;
+  return `${sign}${arcsec.toFixed(3)}″`;
+}
+
 function formatMicroarcsec(radians) {
   if (!Number.isFinite(radians)) return '—';
   const uas = Math.abs(radians) * (180 / Math.PI) * 3600 * 1e6;
@@ -178,6 +188,41 @@ function lensFormulas(lens) {
       tex: '\\theta = \\dfrac{3\\sqrt{3}\\, r_{s}}{D}',
       value: formatMicroarcsec(lens.shadow),
       note: `At ${kpc} kpc, about the distance to the Galactic center. The Event Horizon Telescope measured about 52 μas for Sagittarius A*.`,
+    },
+  ];
+}
+
+function precessFormulas(pre) {
+  const screenDeg = Math.abs(pre.screenRad) * (180 / Math.PI);
+  const screenText = screenDeg >= 30 ? `${screenDeg.toFixed(0)}°` : `${screenDeg.toFixed(1)}°`;
+  const gain = sci(pre.gain, 3);
+  const centuryNote = pre.nearMercury
+    ? `P = ${formatDuration(pre.period)} from Kepler’s law. A Julian century is 36525 days, so Mercury makes a few hundred trips. The result is the famous residual, about 43″ a century, left after the other planets’ Newtonian pull (about 532″ a century) is subtracted.`
+    : `P = ${formatDuration(pre.period)} for the orbit on the sheet right now. Distances use this preset’s scale. Drag Mercury or change the Sun and the number follows. At Mercury’s real orbit the same formula gives about 43″ a century.`;
+  const shapeNote = pre.bound
+    ? `a = ${formatLength(pre.aMeters)}, e = ${pre.e.toFixed(3)}. One sun, and Mercury treated as a test mass. The other planets are not in this scene; they cause a separate Newtonian drift.`
+    : 'The path is no longer a bound ellipse, so this formula does not apply. Reset restores Mercury’s orbit.';
+  return [
+    {
+      key: 'pre-orbit',
+      title: 'Perihelion advance per orbit',
+      tex: '\\Delta\\varphi = \\dfrac{6\\pi GM}{c^{2} a(1-e^{2})}',
+      value: pre.bound ? formatArcsec(pre.perOrbit) : '—',
+      note: shapeNote,
+    },
+    {
+      key: 'pre-century',
+      title: 'Advance per century',
+      tex: '\\Delta\\varphi_{\\mathrm{cen}} = \\Delta\\varphi \\times \\dfrac{36525\\,\\mathrm{d}}{P}',
+      value: pre.bound ? formatArcsec(pre.perCentury) : '—',
+      note: centuryNote,
+    },
+    {
+      key: 'pre-sheet',
+      title: 'Advance drawn on the sheet',
+      tex: '\\dfrac{d^{2}u}{d\\varphi^{2}} + u = \\dfrac{GM}{h^{2}} + \\dfrac{3GM}{c^{2}} u^{2}',
+      value: pre.bound ? `${screenText} per orbit` : '—',
+      note: `u = 1/r. Newton is the first term on the right, and that orbit is the closed ellipse. The second term opens the rosette. On the sheet it is multiplied by ${gain}, so the perihelion walks about ${screenText} per revolution instead of ${pre.bound ? formatArcsec(pre.perOrbit) : 'a fraction of an arcsecond'}. The orange trail is that sped-up path. It falls a little short of the ellipse at the far end, because a term this large is no longer a tiny correction. The real advance does not change the shape you could see. The clock along the path is the simulation clock, not proper time. A ball rolling in the well would stay on the ellipse.`,
     },
   ];
 }
@@ -376,6 +421,15 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
   }
 
+  const pre = precessMetrics(bodies, metersPerUnit);
+  if (pre) {
+    stats.push(
+      { label: 'Eccentricity', value: pre.bound ? pre.e.toFixed(3) : '—', detail: pre.nearMercury ? 'Mercury’s real e' : pre.bound ? 'this orbit' : 'not a closed orbit' },
+      { label: 'Advance / century', value: pre.bound ? formatArcsec(pre.perCentury) : '—', detail: 'general relativity' },
+    );
+    formulas.unshift(...precessFormulas(pre));
+  }
+
   const lens = lensMetrics(bodies);
   if (lens && !partner) {
     stats.pop();
@@ -418,6 +472,10 @@ export function buildReadout(body, bodies, metersPerUnit) {
   }
   if (wave) {
     motion = 'The spiral on the grid is that wave: it turns with the stars and the crests move outward. The height is a diagram of a stretch that, in the real wave, happens in the plane.';
+  }
+  if (pre) {
+    const line = 'The closed ellipse is Newton’s orbit. The orange trail is the relativistic one, and the green spoke is perihelion.';
+    motion = motion ? `${line} ${motion}` : line;
   }
   if (partner && !central) {
     const ratio = circularRatio(body, partner);

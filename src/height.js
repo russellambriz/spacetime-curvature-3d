@@ -6,6 +6,8 @@
  * The GW ripples preset adds sampleWave(), a quadrupole diagram locked to the orbit.
  * Frame dragging does not change this height. The sheet shader shears the grid
  * lines around a Kerr hole; that shear is a diagram, not more curvature.
+ * Perihelion precession does not change this height either. The extra pull
+ * is applied in the orbit integrator; the sheet stays a softened well.
  * The vertex shader in world.js must implement the same functions.
  * throatDepth 0 keeps the original shallow continuation (the lens preset).
  * A positive throatDepth, used by the black-hole preset, plunges inside the

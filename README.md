@@ -12,9 +12,13 @@ The gravitational-lens preset draws the null geodesics of a black hole on that s
 
 The frame-dragging preset spins that hole. The horizon shrinks inside an amber ergosphere, the grid shears into a whirl, and ticks of local inertial frames are dragged ahead closer in.
 
+The perihelion preset puts Mercury on the same sheet. A closed ellipse is the orbit Newton would keep. The orange trail is the relativistic one, and it does not close: the perihelion walks ahead.
+
 ![Light rays bending around a black hole. Wide rays escape, close rays fall in, and the math panel reads the deflection](media/lens.png)
 
 ![A spinning black hole. The grid spirals into the well, an amber ring marks the ergosphere, and the math panel reads the frame-dragging period](media/frame-drag.png)
+
+![Mercury’s orbit. The pale ellipse is Newton’s closed path, the orange trail is the relativistic rosette, and the math panel reads 43 arcseconds a century](media/precess.png)
 
 ![Two neutron stars on the sheet, with the outgoing gravitational-wave ripple and the live wave math](media/waves.png)
 
@@ -45,7 +49,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
-- Keys: `1`–`7` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
+- Keys: `1`–`8` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface.
 
 ## Presets
 
@@ -58,6 +62,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 | Gravitational waves | A 1.4 and 1.2 solar-mass neutron-star pair. The grid carries the quadrupole wave their orbit sheds: a two-armed spiral, twice per orbit, crests moving outward. |
 | Gravitational lens | Schwarzschild null geodesics around a 4.3 million solar-mass hole. Rays aimed inside \(b_c = 3\sqrt{3}\, r_s / 2\) fall in. The ring at \(1.5\, r_s\) is the photon sphere. |
 | Frame dragging | A Kerr hole with spin \(\hat{a} = 0.90\) and the mass of M87*, about \(6.5 \times 10^{9}\) suns. The amber ring is the equatorial ergosphere. Ticks are local frames, dragged faster closer in. |
+| Perihelion | Mercury, eccentricity 0.206, around one solar mass. The closed ellipse is Newton’s orbit. The orange trail integrates the Schwarzschild orbit equation, with the relativistic term enlarged so the perihelion’s walk is visible. The panel keeps the true 43″ per century. |
 
 ## The math
 
@@ -96,6 +101,14 @@ On the frame-dragging preset the panel reads the hole as Kerr:
 - Frame-dragging period of a local inertial frame at the star, from the exact equatorial rate, with the far-zone limit \(2GJ / c^{2}r^{3}\) beside it
 
 The whirl on the grid is a diagram, held to a spiral that stays readable. The ticks keep the \(1/r^{3}\) falloff, and the periods in the panel stay in SI. The star’s orbit is drawn as a Newtonian circle outside the prograde innermost stable orbit.
+
+On the perihelion preset the panel reads Mercury’s orbit as a Schwarzschild test mass:
+
+- Advance per revolution, \(\Delta\varphi = 6\pi GM / (c^{2} a(1-e^{2}))\)
+- That advance over a Julian century, about 43 arcseconds
+- The orbit equation, and the factor by which its relativistic term is enlarged on the sheet
+
+The other planets are left out. Their Newtonian pull accounts for about 532″ per century of Mercury’s perihelion drift; the 43″ is the residual Einstein predicted. The orange curve falls a little short of the ellipse at the far end, because the enlarged term is no longer a tiny correction. The real advance would not change a shape you could see. The clock along the path is the simulation clock, not proper time.
 
 The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, and a softened potential well for stars and planets. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
 

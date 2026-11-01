@@ -3,6 +3,7 @@ import { getPreset } from './presets.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 import { updateLiveDrag } from './drag.js';
+import { livePrecess, orbitElements, precessKick, resetLivePrecess } from './precess.js';
 
 const GRAVITY_SOFT = 0.55;
 const GRAVITY_SOFT2 = GRAVITY_SOFT * GRAVITY_SOFT;
@@ -57,6 +58,7 @@ export function createBody(spec) {
     tilt: spec.tilt ?? 0,
     trail: spec.trail !== false,
     trailWidth: spec.trailWidth ?? 0.1,
+    trailPoints: spec.trailPoints ?? 0,
     trailColor: spec.trailColor ?? [1.4, 0.4, 0.1],
     style: spec.style ?? 'generic',
     core: spec.core ?? [1, 1, 1],
@@ -85,6 +87,7 @@ export function createState(presetId = 'sun-earth') {
     wave: null,
     lens: false,
     drag: false,
+    precess: false,
   };
 }
 
@@ -102,11 +105,13 @@ export function loadPreset(state, presetId) {
     : null;
   state.lens = Boolean(preset.lens);
   state.drag = Boolean(preset.drag);
+  state.precess = Boolean(preset.precess);
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
   const selected = state.bodies.find((body) => body.name === preset.select) ?? state.bodies[0];
   state.selectedId = selected.id;
+  resetLivePrecess(state);
   computeAccelerations(state.bodies);
   updateLiveWave(state);
   updateLiveLens(state);
@@ -150,13 +155,19 @@ export function computeAccelerations(bodies) {
     bodies[i].ax = 0;
     bodies[i].az = 0;
   }
+  // The perihelion preset uses the exact inverse square. Softening would
+  // add its own precession and hide the relativistic term. Other presets
+  // keep the soft core so a dragged body cannot hit a singularity.
+  const exact = livePrecess.enabled;
   for (let i = 0; i < bodies.length; i += 1) {
     const a = bodies[i];
     for (let j = i + 1; j < bodies.length; j += 1) {
       const b = bodies[j];
       const dx = b.x - a.x;
       const dz = b.z - a.z;
-      const r2 = dx * dx + dz * dz + GRAVITY_SOFT2;
+      let r2 = dx * dx + dz * dz;
+      if (!exact) r2 += GRAVITY_SOFT2;
+      else if (r2 < 0.09) r2 = 0.09;
       const inv = 1 / (r2 * Math.sqrt(r2));
       const ax = dx * inv;
       const az = dz * inv;
@@ -166,6 +177,7 @@ export function computeAccelerations(bodies) {
       b.az -= a.simMass * az;
     }
   }
+  precessKick(bodies);
 }
 
 function limitSpeed(body) {
@@ -195,6 +207,99 @@ export function verlet(bodies, dt, draggedId) {
     body.vz += body.az * dt * 0.5;
     limitSpeed(body);
   }
+}
+
+function wrapSigned(delta) {
+  let d = delta;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+/**
+ * Walk the relativistic orbit backward so the trail can show the rosette
+ * immediately. Samples are offsets from the central mass, oldest first.
+ * Also records perihelion directions and the advance between the latest two.
+ */
+export function traceOrbitBackward(bodies, turns = 3.2) {
+  if (!livePrecess.enabled) return null;
+  const primary = bodies.find((body) => body.id === livePrecess.primaryId);
+  const planet = bodies.find((body) => body.id === livePrecess.planetId);
+  if (!primary || !planet) return null;
+  const el = orbitElements(planet, primary);
+  if (!el || !(el.p > 0) || el.e > 0.95) return null;
+  const a = el.p / Math.max(1e-4, 1 - el.e * el.e);
+  const period = 2 * Math.PI * Math.sqrt((a ** 3) / primary.simMass);
+  const steps = Math.min(24000, Math.max(240, Math.ceil((turns * period) / FIXED_DT)));
+  const sun = {
+    id: primary.id,
+    massKg: primary.massKg,
+    simMass: primary.simMass,
+    x: primary.x,
+    z: primary.z,
+    vx: -primary.vx,
+    vz: -primary.vz,
+    ax: 0,
+    az: 0,
+  };
+  const moon = {
+    id: planet.id,
+    massKg: planet.massKg,
+    simMass: planet.simMass,
+    x: planet.x,
+    z: planet.z,
+    vx: -planet.vx,
+    vz: -planet.vz,
+    ax: 0,
+    az: 0,
+  };
+  const pair = [sun, moon];
+  computeAccelerations(pair);
+  const stride = Math.max(1, Math.round(steps / 1560));
+  const offsets = [];
+  const minima = [];
+  let prevOx = moon.x - sun.x;
+  let prevOz = moon.z - sun.z;
+  let prevR = Math.hypot(prevOx, prevOz);
+  let prevDr = 0;
+  offsets.push(prevOx, prevOz);
+  for (let i = 0; i < steps; i += 1) {
+    verlet(pair, FIXED_DT, null);
+    const ox = moon.x - sun.x;
+    const oz = moon.z - sun.z;
+    const r = Math.hypot(ox, oz);
+    const dr = r - prevR;
+    if (prevDr < 0 && dr >= 0 && prevR < a * 1.35) {
+      minima.push({ ox: prevOx, oz: prevOz });
+    }
+    prevDr = dr;
+    prevR = r;
+    prevOx = ox;
+    prevOz = oz;
+    if (i % stride === 0) offsets.push(ox, oz);
+  }
+  const ordered = [];
+  const count = offsets.length / 2;
+  for (let i = count - 1; i >= 0; i -= 1) {
+    ordered.push(offsets[i * 2], offsets[i * 2 + 1]);
+  }
+  const markers = [{ ox: el.x, oz: el.z }];
+  for (let i = 0; i < minima.length && markers.length < 6; i += 1) {
+    markers.push(minima[i]);
+  }
+  let measured = null;
+  if (minima.length) {
+    const now = Math.atan2(el.z, el.x);
+    const ago = Math.atan2(minima[0].oz, minima[0].ox);
+    measured = wrapSigned(now - ago);
+  }
+  return {
+    cx: primary.x,
+    cz: primary.z,
+    offsets: ordered,
+    markers,
+    measured,
+  };
 }
 
 export function advance(state, frameDt, draggedId) {

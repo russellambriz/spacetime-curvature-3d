@@ -15,6 +15,7 @@ import {
 import { updateLiveDrag } from './drag.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
+import { clearPrecessMarks, updateLivePrecess } from './precess.js';
 
 const canvas = document.getElementById('scene');
 const loader = document.getElementById('loader');
@@ -134,6 +135,7 @@ function moveDraggedBody(event) {
   const body = state.bodies.find((candidate) => candidate.id === drag.id);
   if (!body) return;
   setDraggedPosition(body, hit.x, hit.z, 1 / 60);
+  if (state.precess) clearPrecessMarks();
   const view = world.views.find((item) => item.id === body.id);
   if (view) view.trail.reset();
 }
@@ -330,6 +332,7 @@ function frame(now) {
   updateLiveWave(state);
   updateLiveLens(state);
   updateLiveDrag(state, dt);
+  updateLivePrecess(state);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

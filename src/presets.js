@@ -13,6 +13,12 @@ import {
   schwarzschildRadius,
 } from './constants.js';
 import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
+import {
+  MERCURY_A_AU,
+  MERCURY_A_SIM,
+  PRECESS_SIM_MASS,
+  mercuryInitial,
+} from './precess.js';
 
 function orbit(distance, angle, centralMass) {
   const x = Math.cos(angle) * distance;
@@ -460,6 +466,55 @@ export const PRESETS = [
         glowScale: 3.1,
         ...orbit(DRAG_STAR_R, 1.05, DRAG_SIM),
       },
+    ],
+  },
+  {
+    id: 'precess',
+    name: 'Perihelion',
+    tagline: 'Newton’s ellipse closes. Mercury’s perihelion walks ahead.',
+    metersPerUnit: (MERCURY_A_AU * AU) / MERCURY_A_SIM,
+    camera: { position: [8, 30, 24], target: [-0.4, -1.8, 0.2] },
+    select: 'Mercury',
+    precess: true,
+    bodies: [
+      {
+        name: 'Sun',
+        kind: 'star',
+        massKg: M_SUN,
+        radiusM: R_SUN,
+        simMass: PRECESS_SIM_MASS,
+        visualStrength: 13.2,
+        softening: 1.52,
+        radius: 1.18,
+        spin: 0.08,
+        trail: false,
+        style: 'sun',
+        core: [1.35, 1.05, 0.72],
+        limb: [1.15, 0.38, 0.05],
+        glow: '#ffb15a',
+        glowScale: 6.4,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
+      planet({
+        name: 'Mercury',
+        massKg: M_MERCURY,
+        radiusM: R_MERCURY,
+        simMass: PRECESS_SIM_MASS * (M_MERCURY / M_SUN),
+        visualStrength: 0.62,
+        softening: 0.34,
+        radius: 0.4,
+        spin: 0.45,
+        style: 'mercury',
+        glow: '#e6d3ae',
+        glowScale: 2.4,
+        trailColor: [1.7, 0.46, 0.1],
+        trailWidth: 0.2,
+        trailPoints: 2000,
+        ...mercuryInitial(PRECESS_SIM_MASS),
+      }),
     ],
   },
 ];
