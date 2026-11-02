@@ -12,6 +12,7 @@ import {
   R_VENUS,
   schwarzschildRadius,
 } from './constants.js';
+import { CONE_RS } from './cones.js';
 import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
 import {
   MERCURY_A_AU,
@@ -515,6 +516,37 @@ export const PRESETS = [
         trailPoints: 2000,
         ...mercuryInitial(PRECESS_SIM_MASS),
       }),
+    ],
+  },
+  {
+    id: 'cones',
+    name: 'Light cones',
+    tagline: 'Outward light stands still on the horizon.',
+    metersPerUnit: schwarzschildRadius(4.3e6 * M_SUN) / CONE_RS,
+    camera: { position: [6.2, 4.4, 15.2], target: [3.15, 0.5, 0] },
+    select: 'Black hole',
+    cones: true,
+    bodies: [
+      {
+        name: 'Black hole',
+        kind: 'blackhole',
+        massKg: 4.3e6 * M_SUN,
+        radiusM: schwarzschildRadius(4.3e6 * M_SUN),
+        simMass: 400,
+        visualStrength: 0,
+        softening: 1,
+        radius: 0.34,
+        displayHorizon: CONE_RS,
+        spin: 0.02,
+        trail: false,
+        style: 'blackhole',
+        glow: '#ff3ec8',
+        glowScale: 4.4,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
     ],
   },
 ];

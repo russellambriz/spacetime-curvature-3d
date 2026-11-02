@@ -78,7 +78,7 @@ export class UI {
     this.btnWhy.setAttribute('aria-expanded', this.explain.classList.contains('open') ? 'true' : 'false');
     if (window.matchMedia('(pointer: coarse)').matches) {
       const hint = document.getElementById('hint');
-      hint.textContent = 'Tap to inspect or add · hold to drag or remove · pinch to zoom · double-tap empty space hides the interface';
+      hint.textContent = 'Tap to inspect or add · hold to drag or remove · pinch to zoom · double-tap empty space hides the interface · on Light cones, tap a cone';
     }
     this.restoreHud();
   }
@@ -131,6 +131,9 @@ export class UI {
       ['p', 'Newton’s gravity, for one sun and a much lighter planet, closes the orbit. The closest point, the perihelion, stays on the same ray forever. General relativity adds a small extra inward pull that is steep at short range, and the ellipse turns into a rosette:'],
       ['tex', '\\Delta\\varphi = \\dfrac{6\\pi GM}{c^{2} a(1-e^{2})}'],
       ['p', 'For Mercury that is 43 arcseconds a century, on top of a much larger drift caused by the other planets, about 532 arcseconds a century. The 43″ residual was the first clear test of Einstein’s theory. The Perihelion preset draws both curves at Mercury’s real eccentricity, 0.206. The closed ellipse is Newton. The orange trail integrates the orbit equation above with that second term multiplied by hundreds of thousands, so the green perihelion spoke walks forward in a few revolutions. The math panel keeps the true arcseconds. Enlarging the term that far also pulls the far end of the orbit in a little; the real advance would not change a shape you could see. The clock along the path is the simulation clock, not proper time. The sheet’s bend is the same picture used everywhere else. A marble rolling in the well would stay on the ellipse. The precession is the geodesic, not the slope.'],
+      ['p', 'A horizon is not a place where light slows down. It is a place where the future tips over. Far away, a flash can spread in every direction at the speed of light. Draw time upward and distance across, in units where c = 1, and that flash is a cone opening at 45°. Near a black hole the cone shears inward. The Light cones preset uses Painlevé–Gullstrand coordinates, the river picture: space falls toward the hole at the escape speed'],
+      ['tex', 'v = c\\sqrt{\\dfrac{r_{s}}{r}}'],
+      ['p', 'Light still moves at c relative to the river, so the outward edge has slope 1 − √(rₛ/r) and the inward edge has slope −1 − √(rₛ/r). On the horizon the river moves at c and the outward edge stands vertical. Inside, the whole future cone points inward. There is no path that gains radius, and no path that stays put. The vertical spines are “stay at this radius.” Outside the horizon a spine fits inside its cone. Inside, the spine leaves the cone: hovering would be faster than light. The orange curve is a stone that fell from rest at infinity. It stays inside the cones and crosses the horizon. The cones below the grid are the past. The mass is Sagittarius A*, the same hole as the lens preset. Coordinate speed along the diagram is not the speed a nearby observer measures. Locally, light still moves at c.'],
     ];
     const root = document.getElementById('explain-body');
     for (let i = 0; i < blocks.length; i += 1) {

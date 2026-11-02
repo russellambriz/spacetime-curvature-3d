@@ -12,6 +12,7 @@ import {
   selectedBody,
   setDraggedPosition,
 } from './sim.js';
+import { STATIONS, updateLiveCones } from './cones.js';
 import { updateLiveDrag } from './drag.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
@@ -160,7 +161,9 @@ function finishDrag() {
 canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
   pointers.add(event.pointerId);
-  const body = world.pickBody(event.clientX, event.clientY);
+  const cone = world.pickCone(event.clientX, event.clientY);
+  const body = cone ? null : world.pickBody(event.clientX, event.clientY);
+  if (cone) event.stopPropagation();
   if (pointers.size > 1) {
     if (gesture?.timer) window.clearTimeout(gesture.timer);
     if (gesture) gesture.moved = true;
@@ -177,6 +180,7 @@ canvas.addEventListener('pointerdown', (event) => {
     y: event.clientY,
     t: performance.now(),
     body,
+    cone,
     moved: false,
     long: false,
     camera: event.pointerType === 'touch' ? rememberCamera() : null,
@@ -200,7 +204,8 @@ canvas.addEventListener('pointerdown', (event) => {
 }, true);
 
 canvas.addEventListener('pointermove', (event) => {
-  const hovered = event.pointerType !== 'touch' && world.pickBody(event.clientX, event.clientY);
+  const coneHover = event.pointerType !== 'touch' && world.pickCone(event.clientX, event.clientY);
+  const hovered = event.pointerType !== 'touch' && (coneHover || world.pickBody(event.clientX, event.clientY));
   canvas.classList.toggle('hovering', Boolean(hovered) && !drag);
   if (gesture && event.pointerId === gesture.pointerId) {
     const dist = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
@@ -242,10 +247,16 @@ function endDrag(event) {
   const dist = Math.hypot(event.clientX - source.x, event.clientY - source.y);
   const elapsed = performance.now() - source.t;
   if (dist > TAP_PX || elapsed > 700) return;
+  if (fromGesture?.cone) {
+    state.coneStation = fromGesture.cone.index;
+    ui.sync(state, true);
+    return;
+  }
   if (fromGesture?.body || world.pickBody(event.clientX, event.clientY)) {
     const body = fromGesture?.body || world.pickBody(event.clientX, event.clientY);
     if (!body) return;
     state.selectedId = body.id;
+    if (state.cones) state.coneStation = 1;
     ui.refreshSelection();
     return;
   }
@@ -267,6 +278,10 @@ function queueEmptyTap(x, y) {
   lastEmptyTap = now;
   emptyTapTimer = window.setTimeout(() => {
     emptyTapTimer = 0;
+    if (state.cones) {
+      ui.toast('Tap a cone to read how light tips there.');
+      return;
+    }
     const hit = world.pickSheet(x, y);
     if (!hit) return;
     const result = addBody(state, hit.x, hit.z);
@@ -310,6 +325,13 @@ window.addEventListener('keydown', (event) => {
     ui.toggleHud();
   } else if (event.key === 'r' || event.key === 'R') {
     document.getElementById('reset').click();
+  } else if (state.cones && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+    event.preventDefault();
+    const dir = event.key === 'ArrowRight' ? 1 : -1;
+    const current = Number.isInteger(state.coneStation) ? state.coneStation : 1;
+    state.coneStation = (current + dir + STATIONS.length) % STATIONS.length;
+    updateLiveCones(state);
+    ui.sync(state, true);
   } else if (event.key >= '1' && event.key <= '9') {
     const index = Number(event.key) - 1;
     const button = ui.presets.querySelectorAll('.preset')[index];
@@ -333,11 +355,14 @@ function frame(now) {
   updateLiveLens(state);
   updateLiveDrag(state, dt);
   updateLivePrecess(state);
+  updateLiveCones(state);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();
   ui.sync(state);
-  ui.setLabel(world.labelPosition(selectedBody(state)), selectedBody(state)?.name ?? '');
+  const marked = world.coneLabel();
+  if (marked) ui.setLabel(marked, marked.name);
+  else ui.setLabel(world.labelPosition(selectedBody(state)), selectedBody(state)?.name ?? '');
   hideLoader();
   requestAnimationFrame(frame);
 }

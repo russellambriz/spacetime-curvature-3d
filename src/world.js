@@ -22,6 +22,16 @@ import {
   THROAT_SHAPE,
   heightAt,
 } from './height.js';
+import {
+  CONE_PATHS,
+  STATIONS,
+  buildConeSpines,
+  buildConeSurface,
+  buildConeWires,
+  liveCones,
+  samplePath,
+  writePath,
+} from './cones.js';
 import { TICK_RINGS, liveDrag } from './drag.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { livePrecess, writeNewtonEllipse } from './precess.js';
@@ -220,6 +230,34 @@ void main() {
   col *= 1.0 + clamp(vShear, 0.0, 1.0) * 0.5;
   col *= line * fade * (0.7 + slope * 0.65) * waveLift * (1.0 - abyss);
   if (line * fade < 0.028) discard;
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const CONE_VERT = /* glsl */ `
+attribute vec3 aColor;
+varying vec3 vN;
+varying vec3 vW;
+varying vec3 vColor;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vW = w.xyz;
+  vN = normalize(mat3(modelMatrix) * normal);
+  vColor = aColor;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}
+`;
+
+const CONE_FRAG = /* glsl */ `
+varying vec3 vN;
+varying vec3 vW;
+varying vec3 vColor;
+void main() {
+  vec3 N = normalize(vN);
+  vec3 V = normalize(cameraPosition - vW);
+  float ndv = abs(dot(N, V));
+  float fres = pow(1.0 - ndv, 1.35);
+  vec3 col = vColor * (0.22 + 0.28 * ndv + 0.85 * fres);
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -696,6 +734,7 @@ export class World {
     this._buildLens();
     this._buildDrag();
     this._buildPrecess();
+    this._buildCones();
     this._buildComposer();
     this.resize();
   }
@@ -1780,12 +1819,18 @@ export class World {
         view.clouds.scale.setScalar(Math.max(body.radius * 1.055, 0.06));
         view.clouds.rotation.y = body.spin * 1.2;
       }
-      const glowSize = deep
-        ? Math.max(body.displayHorizon * 1.55, 1.2)
-        : Math.max(body.radius * body.glowScale, body.kind === 'blackhole' ? 3.2 : 1);
+      const coneMode = liveCones.enabled && body.kind === 'blackhole';
+      view.mesh.visible = !coneMode;
+      view.glow.visible = !coneMode;
+      if (view.corona) view.corona.visible = !coneMode;
+      const glowSize = coneMode
+        ? 1.15
+        : deep
+          ? Math.max(body.displayHorizon * 1.55, 1.2)
+          : Math.max(body.radius * body.glowScale, body.kind === 'blackhole' ? 3.2 : 1);
       view.glow.scale.set(glowSize, glowSize, 1);
       view.glow.position.y = deep ? -body.displayHorizon * 0.45 : 0;
-      if (body.kind === 'blackhole') view.glow.material.opacity = deep ? 0.42 : 0.75;
+      if (body.kind === 'blackhole') view.glow.material.opacity = coneMode ? 0.34 : deep ? 0.42 : 0.75;
       if (!state.paused) body.spin += dt * body.spinRate;
       view.mesh.rotation.y = body.spin;
       view.mesh.rotation.z = body.tilt || 0;
@@ -1888,6 +1933,275 @@ export class World {
     }
 
     this.syncPrecess(state);
+
+    if (liveCones.enabled) {
+      this.disk.visible = false;
+      this.photon.visible = false;
+      this.sharpRing.visible = false;
+      this.tube.visible = false;
+      this.abyss.visible = false;
+      this.syncCones(state, dt);
+    } else if (this.coneGroup) {
+      this.coneGroup.visible = false;
+    }
+  }
+
+  _makeConeLine(positions, colors) {
+    const geo = new LineGeometry();
+    geo.setPositions(positions);
+    geo.setColors(colors);
+    const line = new Line2(geo, this.coneLineMat);
+    line.frustumCulled = false;
+    line.renderOrder = 4;
+    line.raycast = () => {};
+    this.coneGroup.add(line);
+    return line;
+  }
+
+  _buildCones() {
+    this.coneGroup = new THREE.Group();
+    this.coneGroup.visible = false;
+    this.coneGroup.frustumCulled = false;
+    this.scene.add(this.coneGroup);
+    this.coneMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+      vertexShader: CONE_VERT,
+      fragmentShader: CONE_FRAG,
+    });
+    const surface = buildConeSurface(liveCones.rs, 1);
+    this.coneGeo = new THREE.BufferGeometry();
+    this.coneGeo.setAttribute('position', new THREE.BufferAttribute(surface.positions, 3));
+    this.coneGeo.setAttribute('normal', new THREE.BufferAttribute(surface.normals, 3));
+    this.coneGeo.setAttribute('aColor', new THREE.BufferAttribute(surface.colors, 3));
+    this.coneGeo.setIndex(new THREE.BufferAttribute(surface.indices, 1));
+    this.coneMesh = new THREE.Mesh(this.coneGeo, this.coneMat);
+    this.coneMesh.frustumCulled = false;
+    this.coneMesh.renderOrder = 2;
+    this.coneMesh.raycast = () => {};
+    this.coneGroup.add(this.coneMesh);
+
+    const wires = buildConeWires(liveCones.rs, 1);
+    this.coneWireGeo = new THREE.BufferGeometry();
+    this.coneWireGeo.setAttribute('position', new THREE.BufferAttribute(wires.positions, 3));
+    this.coneWireGeo.setAttribute('color', new THREE.BufferAttribute(wires.colors, 3));
+    this.coneWires = new THREE.LineSegments(
+      this.coneWireGeo,
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+        toneMapped: false,
+      }),
+    );
+    this.coneWires.frustumCulled = false;
+    this.coneWires.renderOrder = 3;
+    this.coneWires.raycast = () => {};
+    this.coneGroup.add(this.coneWires);
+
+    this.coneLineMat = new LineMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      linewidth: 2.4,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+    });
+    this.coneCore = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 28, 20),
+      new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    this.coneCore.scale.setScalar(0.28);
+    this.coneCore.renderOrder = 4;
+    this.coneCore.raycast = () => {};
+    this.coneGroup.add(this.coneCore);
+    this.coneLines = {};
+    const spines = buildConeSpines(liveCones.rs, 1);
+    for (let i = 0; i < spines.length; i += 1) {
+      const spine = spines[i];
+      const colors = new Float32Array((spine.positions.length / 3) * 3);
+      for (let k = 0; k < spine.positions.length / 3; k += 1) {
+        colors[k * 3] = spine.color[0];
+        colors[k * 3 + 1] = spine.color[1];
+        colors[k * 3 + 2] = spine.color[2];
+      }
+      this.coneLines[spine.id] = this._makeConeLine(spine.positions, colors);
+    }
+    this.conePaths = {};
+    for (let i = 0; i < CONE_PATHS.length; i += 1) {
+      const path = CONE_PATHS[i];
+      const positions = new Float32Array(path.count * 3);
+      const colors = new Float32Array(path.count * 3);
+      writePath(path, liveCones.rs, positions, colors);
+      this.conePaths[path.id] = this._makeConeLine(positions, colors);
+    }
+
+    const pickMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false,
+    });
+    this.conePicks = STATIONS.map((station, index) => {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), pickMat);
+      mesh.userData.coneIndex = index;
+      mesh.userData.coneName = station.name;
+      mesh.frustumCulled = false;
+      this.coneGroup.add(mesh);
+      return mesh;
+    });
+
+    this.conePhotons = CONE_PATHS.map((path) => {
+      const sprites = [];
+      for (let i = 0; i < path.photons; i += 1) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: this.glowTexture,
+          color: new THREE.Color(path.color[0], path.color[1], path.color[2]),
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          depthTest: false,
+          toneMapped: false,
+          opacity: 0.95,
+        }));
+        sprite.frustumCulled = false;
+        sprite.renderOrder = 5;
+        sprite.raycast = () => {};
+        this.coneGroup.add(sprite);
+        sprites.push(sprite);
+      }
+      return { path, sprites };
+    });
+    this.coneSig = '';
+    this.coneTime = 0.7;
+  }
+
+  _paintConeLine(line, positions, color) {
+    const colors = new Float32Array((positions.length / 3) * 3);
+    for (let i = 0; i < positions.length / 3; i += 1) {
+      colors[i * 3] = color[0];
+      colors[i * 3 + 1] = color[1];
+      colors[i * 3 + 2] = color[2];
+    }
+    line.geometry.setPositions(positions);
+    line.geometry.setColors(colors);
+  }
+
+  syncCones(state, dt) {
+    this.coneGroup.visible = true;
+    const rs = liveCones.rs;
+    if (this.coneCore) this.coneCore.scale.setScalar(Math.max(0.16, rs * 0.15));
+    const selected = liveCones.station;
+    this.coneGroup.position.set(liveCones.cx, 0, liveCones.cz);
+    const sig = `${rs.toFixed(4)}|${selected}`;
+    if (sig !== this.coneSig) {
+      this.coneSig = sig;
+      const surface = buildConeSurface(rs, selected);
+      const pos = this.coneGeo.attributes.position;
+      const nrm = this.coneGeo.attributes.normal;
+      const col = this.coneGeo.attributes.aColor;
+      pos.array.set(surface.positions);
+      nrm.array.set(surface.normals);
+      col.array.set(surface.colors);
+      pos.needsUpdate = true;
+      nrm.needsUpdate = true;
+      col.needsUpdate = true;
+      this.coneGeo.computeBoundingSphere();
+      const wires = buildConeWires(rs, selected);
+      const wpos = this.coneWireGeo.attributes.position;
+      const wcol = this.coneWireGeo.attributes.color;
+      wpos.array.set(wires.positions);
+      wcol.array.set(wires.colors);
+      wpos.needsUpdate = true;
+      wcol.needsUpdate = true;
+      this.coneWireGeo.computeBoundingSphere();
+      const spines = buildConeSpines(rs, selected);
+      for (let i = 0; i < spines.length; i += 1) {
+        const spine = spines[i];
+        this._paintConeLine(this.coneLines[spine.id], spine.positions, spine.color);
+      }
+      for (let i = 0; i < CONE_PATHS.length; i += 1) {
+        const path = CONE_PATHS[i];
+        const positions = new Float32Array(path.count * 3);
+        const colors = new Float32Array(path.count * 3);
+        writePath(path, rs, positions, colors);
+        const line = this.conePaths[path.id];
+        line.geometry.setPositions(positions);
+        line.geometry.setColors(colors);
+      }
+    }
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    for (let i = 0; i < STATIONS.length; i += 1) {
+      const station = STATIONS[i];
+      const pick = this.conePicks[i];
+      pick.position.set(station.ratio * rs, station.rise * rs * 0.5, 0);
+      pick.scale.setScalar(rs * (coarse ? 0.36 : 0.22));
+    }
+    if (!state.paused && state.timeScale > 0) this.coneTime += dt * state.timeScale;
+    const tau = this.coneTime * 0.26;
+    for (let i = 0; i < this.conePhotons.length; i += 1) {
+      const item = this.conePhotons[i];
+      const span = item.path.t[item.path.count - 1] || 1;
+      const count = item.sprites.length;
+      for (let p = 0; p < count; p += 1) {
+        const sample = samplePath(item.path, tau + (p / count) * span);
+        const sprite = item.sprites[p];
+        if (!sample) {
+          sprite.visible = false;
+          continue;
+        }
+        sprite.position.set(sample.x * rs, sample.y * rs, 0);
+        const scale = rs * (item.path.id === 'crawl' || item.path.id === 'trapped' ? 0.36 : 0.26) * sample.fade;
+        sprite.scale.set(scale, scale, 1);
+        sprite.visible = scale > 0.03;
+      }
+    }
+    const station = STATIONS[selected];
+    if (station) {
+      this.ring.visible = true;
+      this.ring.position.set(liveCones.cx + station.ratio * rs, 0.06, liveCones.cz);
+      const mark = Math.max(0.38, rs * 0.2);
+      this.ring.scale.set(mark, mark, mark);
+    }
+  }
+
+  pickCone(x, y) {
+    if (!this.coneGroup?.visible) return null;
+    this.clientToNdc(x, y);
+    this.raycaster.setFromCamera(this._ndc, this.camera);
+    const hits = this.raycaster.intersectObjects(this.conePicks, false);
+    if (!hits.length) return null;
+    const object = hits[0].object;
+    return { index: object.userData.coneIndex, name: object.userData.coneName };
+  }
+
+  coneLabel() {
+    if (!liveCones.enabled) return null;
+    const station = STATIONS[liveCones.station];
+    if (!station) return null;
+    const rs = liveCones.rs;
+    this._proj.set(
+      liveCones.cx + station.ratio * rs,
+      station.rise * rs * 0.92,
+      liveCones.cz,
+    );
+    this._proj.project(this.camera);
+    if (this._proj.z > 1) return null;
+    const width = this.canvas.clientWidth || window.innerWidth;
+    const height = this.canvas.clientHeight || window.innerHeight;
+    return {
+      x: (this._proj.x * 0.5 + 0.5) * width,
+      y: (-this._proj.y * 0.5 + 0.5) * height,
+      name: station.name,
+    };
   }
 
   frameCamera(state, animate) {
@@ -1946,6 +2260,11 @@ export class World {
       this.renderer.getSize(this._viewSize);
       this.lensMaterial.resolution.copy(this._viewSize);
       this.lensMaterial.linewidth = Math.min(width, height) < 700 ? 2.6 : 2.05;
+    }
+    if (this.coneLineMat) {
+      this.renderer.getSize(this._viewSize);
+      this.coneLineMat.resolution.copy(this._viewSize);
+      this.coneLineMat.linewidth = Math.min(width, height) < 700 ? 3.15 : 2.4;
     }
   }
 

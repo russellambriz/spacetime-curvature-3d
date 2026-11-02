@@ -1,5 +1,6 @@
 import { M_EARTH, R_EARTH, MAX_BODIES, schwarzschildRadius } from './constants.js';
 import { getPreset } from './presets.js';
+import { updateLiveCones } from './cones.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 import { updateLiveDrag } from './drag.js';
@@ -88,6 +89,8 @@ export function createState(presetId = 'sun-earth') {
     lens: false,
     drag: false,
     precess: false,
+    cones: false,
+    coneStation: null,
   };
 }
 
@@ -106,6 +109,8 @@ export function loadPreset(state, presetId) {
   state.lens = Boolean(preset.lens);
   state.drag = Boolean(preset.drag);
   state.precess = Boolean(preset.precess);
+  state.cones = Boolean(preset.cones);
+  state.coneStation = preset.cones ? 1 : null;
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
@@ -116,6 +121,7 @@ export function loadPreset(state, presetId) {
   updateLiveWave(state);
   updateLiveLens(state);
   updateLiveDrag(state, 0);
+  updateLiveCones(state);
   return state;
 }
 

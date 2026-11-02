@@ -8,6 +8,8 @@
  * lines around a Kerr hole; that shear is a diagram, not more curvature.
  * Perihelion precession does not change this height either. The extra pull
  * is applied in the orbit integrator; the sheet stays a softened well.
+ * Light cones do not change this height. That preset leaves the sheet flat:
+ * the grid is one moment of time, and the cones stand up from it.
  * The vertex shader in world.js must implement the same functions.
  * throatDepth 0 keeps the original shallow continuation (the lens preset).
  * A positive throatDepth, used by the black-hole preset, plunges inside the

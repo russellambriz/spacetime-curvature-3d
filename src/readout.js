@@ -9,6 +9,7 @@ import {
   schwarzschildRadius,
   sci,
 } from './constants.js';
+import { coneMetrics } from './cones.js';
 import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
 import { precessMetrics } from './precess.js';
@@ -227,6 +228,66 @@ function precessFormulas(pre) {
   ];
 }
 
+function formatConeSpeed(fraction) {
+  const abs = Math.abs(fraction);
+  if (abs < 0.0008) return 'at rest';
+  const mag = abs >= 0.01 ? `${abs.toFixed(3)} c` : `${abs.toFixed(4)} c`;
+  return fraction > 0 ? `${mag} outward` : `${mag} inward`;
+}
+
+function formatTilt(radians) {
+  const deg = radians * (180 / Math.PI);
+  if (Math.abs(deg) < 0.05) return 'vertical';
+  if (deg > 0) return `${deg.toFixed(1)}° from vertical, outward`;
+  return `${Math.abs(deg).toFixed(1)}° inward of vertical`;
+}
+
+function outgoingNote(ratio) {
+  if (ratio < 0.98) {
+    return 'Aimed outward, and it still loses radius. Both edges of the future cone point inward. Nothing can climb out, and nothing can stay at this radius.';
+  }
+  if (ratio < 1.02) {
+    return 'On the horizon an outward photon stays at this radius. From far away it appears to freeze on the magenta line. A nearby observer still measures that ray moving at c.';
+  }
+  return 'An outward photon gains radius at this coordinate speed. dr/dt is not what a nearby clock and ruler measure. Locally, light still moves at c. The difference is the river.';
+}
+
+function coneFormulas(cone, rsMeters) {
+  const { station, slopes, ratio } = cone;
+  const where = `${ratio.toFixed(2)} rₛ`;
+  const radius = rsMeters * ratio;
+  return [
+    {
+      key: 'cone-river',
+      title: `River speed at ${station.name.toLowerCase()}`,
+      tex: 'v = c\\sqrt{\\dfrac{r_{s}}{r}}',
+      value: `${slopes.beta.toFixed(3)} c inward`,
+      note: `Space falls toward the hole at the Newtonian escape speed, ${formatSpeed(slopes.beta * C)}. In Painlevé–Gullstrand coordinates that speed is exact, and the cones are sheared by it. Light still moves at c relative to the river. This cone is at ${where}, ${formatLength(radius)} from the center. ${station.note}`,
+    },
+    {
+      key: 'cone-out',
+      title: `Outgoing light at ${where}`,
+      tex: '\\dfrac{dr}{dt} = c\\left(1 - \\sqrt{\\dfrac{r_{s}}{r}}\\right)',
+      value: formatConeSpeed(slopes.outgoing),
+      note: outgoingNote(ratio),
+    },
+    {
+      key: 'cone-in',
+      title: `Ingoing light at ${where}`,
+      tex: '\\dfrac{dr}{dt} = -c\\left(1 + \\sqrt{\\dfrac{r_{s}}{r}}\\right)',
+      value: formatConeSpeed(slopes.ingoing),
+      note: 'Always inward, and faster than the river. On the horizon this coordinate speed is 2c. That is allowed: dr/dt is not a local speed. The photons that cross the horizon are this ray.',
+    },
+    {
+      key: 'cone-tilt',
+      title: `Outward tilt at ${where}`,
+      tex: '\\theta_{+} = \\arctan\\left(1 - \\sqrt{\\dfrac{r_{s}}{r}}\\right)',
+      value: formatTilt(cone.tilt),
+      note: 'Angle between the outward ray and the time axis, which points straight up. At infinity the cone opens to 45°, because distance and time are drawn in the same units, with c = 1. The past cone hangs below the grid with the same tilt.',
+    },
+  ];
+}
+
 function waveFormulas(wave) {
   return [
     {
@@ -266,6 +327,7 @@ export function buildReadout(body, bodies, metersPerUnit) {
   const central = isCentral(body, partner);
   const rsSelf = schwarzschildRadius(body.massKg);
   const drag = dragMetrics(bodies, metersPerUnit);
+  const cones = coneMetrics(bodies);
   const formulas = [];
   const spinningHole = Boolean(drag) && body.kind === 'blackhole' && body.kerrSpin > 0;
 
@@ -461,8 +523,23 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
     formulas.unshift(...dragFormulas(drag));
   }
+  if (cones) {
+    const rsMeters = schwarzschildRadius(cones.massKg);
+    stats.push(
+      { label: 'This cone', value: `${cones.ratio.toFixed(2)} rₛ`, detail: cones.station.name },
+      { label: 'Outgoing light', value: formatConeSpeed(cones.slopes.outgoing), detail: 'coordinate speed' },
+    );
+    formulas.unshift(...coneFormulas(cones, rsMeters));
+    const escape = formulas.find((formula) => formula.key === 'escape');
+    if (escape) {
+      escape.note = 'Newtonian escape speed at the horizon is c. That is the river speed on the cones. At the horizon the outward cone stands vertical, and inside it points only inward.';
+    }
+  }
 
   let motion = null;
+  if (cones) {
+    motion = 'Up is later. The grid is one moment, and the magenta ring is the horizon. Green cones are outside it, magenta cones inside. Orange is a stone falling through. Tap a cone, or press the arrow keys, to read the tilt there.';
+  }
   if (lens) {
     motion = 'The filaments are light, traced by photons. Aimed inside the critical impact parameter, a ray falls in. Aimed wider, it bends and escapes. The ring at one and a half horizons is the photon sphere.';
   }
@@ -499,9 +576,11 @@ export function buildReadout(body, bodies, metersPerUnit) {
         : `Orbiting ${partner.name}`
       : spinningHole
         ? `Spinning at â = ${drag.spin.toFixed(2)}`
-        : lens
-          ? 'Lensing the rays drawn around it'
-          : 'Alone on the sheet',
+        : cones
+          ? `${cones.station.name} at ${cones.ratio.toFixed(2)} horizons`
+          : lens
+            ? 'Lensing the rays drawn around it'
+            : 'Alone on the sheet',
     stats,
     formulas,
     motion,
