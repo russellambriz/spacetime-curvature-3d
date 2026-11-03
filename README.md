@@ -16,6 +16,8 @@ The perihelion preset puts Mercury on the same sheet. A closed ellipse is the or
 
 The light-cone preset leaves the grid flat and stands the causal cones up from it. Time points up. On the horizon the outward cone is vertical. Inside, it points only inward.
 
+The tides preset drops a round ring from rest around a ten-solar-mass hole. Orange arms stretch along the fall and green arms squeeze across. Feet reach the horizon first.
+
 ![Light rays bending around a black hole. Wide rays escape, close rays fall in, and the math panel reads the deflection](media/lens.png)
 
 ![A spinning black hole. The grid spirals into the well, an amber ring marks the ergosphere, and the math panel reads the frame-dragging period](media/frame-drag.png)
@@ -23,6 +25,8 @@ The light-cone preset leaves the grid flat and stands the causal cones up from i
 ![Mercury’s orbit. The pale ellipse is Newton’s closed path, the orange trail is the relativistic rosette, and the math panel reads 43 arcseconds a century](media/precess.png)
 
 ![Light cones around a black hole. The outward cone stands vertical on the horizon and tips inward inside it](media/cones.png)
+
+![A ring falling into a ten-solar-mass hole. Orange arms have stretched, green arms have squeezed, and the math panel reads the tide across 2 m](media/tides.png)
 
 ![Two neutron stars on the sheet, with the outgoing gravitational-wave ripple and the live wave math](media/waves.png)
 
@@ -53,7 +57,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
-- Keys: `1`–`9` presets, `Space` pause, `T` trails, `R` reset, `H` hide the interface. On the light-cone preset, the left and right arrow keys move between cones.
+- Keys: `1`–`9` presets, `0` the tides preset, `Space` pause, `T` trails, `R` reset, `H` hide the interface. On the light-cone preset, the left and right arrow keys move between cones.
 
 ## Presets
 
@@ -68,6 +72,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 | Frame dragging | A Kerr hole with spin \(\hat{a} = 0.90\) and the mass of M87*, about \(6.5 \times 10^{9}\) suns. The amber ring is the equatorial ergosphere. Ticks are local frames, dragged faster closer in. |
 | Perihelion | Mercury, eccentricity 0.206, around one solar mass. The closed ellipse is Newton’s orbit. The orange trail integrates the Schwarzschild orbit equation, with the relativistic term enlarged so the perihelion’s walk is visible. The panel keeps the true 43″ per century. |
 | Light cones | Painlevé–Gullstrand light cones of a 4.3 million solar-mass hole, the mass of Sagittarius A*. Up is later. The river speed is \(c\sqrt{r_s/r}\). On the horizon the outward ray stands still. Inside, the future cone points only in. |
+| Tides | Geodesic deviation around a 10 solar-mass hole. A ring is released from rest at \(6.15\, r_s\). It stretches along the fall and squeezes sideways. Marks on the far side are the tide at that radius, falling as \(1/r^3\). |
 
 ## The math
 
@@ -123,6 +128,15 @@ On the light-cone preset the panel reads the cone you select:
 - The outward tilt from the time axis
 
 The grid is one moment, not the Flamm embedding used by the other presets. Crests are not exaggerated: a 45° cone is the limit at infinity, and at a few horizons the tilt is still obvious. Coordinate speed on the diagram is not a local measurement. Nearby, light still moves at \(c\). The orange curve is a stone that fell from rest at infinity. The vertical spines are paths that stay at one radius. Inside the horizon that path leaves the cone.
+
+On the tides preset the panel reads the falling ring as Schwarzschild geodesic deviation:
+
+- Radial stretch across 2 m, \(\Delta a_{\parallel} = 2GM L / r^{3}\)
+- Transverse squeeze, half of that and inward
+- The same stretch on this hole’s horizon, beside Sagittarius A*
+- The radius where a 2 m person feels one g of difference
+
+The ring is enlarged so the stretch factors can be seen. Those factors are the linear solution, which assumes a separation small next to \(r\). The ring steps inward evenly in radius. Proper time is the number in the panel, and the fall on screen is slowed. A real drop from rest lingers far out and then plunges. Around this ten-solar-mass hole the one-g surface is hundreds of horizons out. Around Sagittarius A* a 2 m person can cross the horizon intact. The horizon is not where the tide becomes infinite.
 
 The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, and a softened potential well for stars and planets. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
 

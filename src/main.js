@@ -17,6 +17,7 @@ import { updateLiveDrag } from './drag.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 import { clearPrecessMarks, updateLivePrecess } from './precess.js';
+import { updateLiveTides } from './tides.js';
 
 const canvas = document.getElementById('scene');
 const loader = document.getElementById('loader');
@@ -336,6 +337,9 @@ window.addEventListener('keydown', (event) => {
     const index = Number(event.key) - 1;
     const button = ui.presets.querySelectorAll('.preset')[index];
     if (button) button.click();
+  } else if (event.key === '0') {
+    const button = ui.presets.querySelectorAll('.preset')[9];
+    if (button) button.click();
   }
 });
 
@@ -356,6 +360,7 @@ function frame(now) {
   updateLiveDrag(state, dt);
   updateLivePrecess(state);
   updateLiveCones(state);
+  updateLiveTides(state, dt);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

@@ -13,6 +13,7 @@ import {
   schwarzschildRadius,
 } from './constants.js';
 import { CONE_RS } from './cones.js';
+import { TIDE_RS, TIDE_SOLAR } from './tides.js';
 import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
 import {
   MERCURY_A_AU,
@@ -542,6 +543,38 @@ export const PRESETS = [
         style: 'blackhole',
         glow: '#ff3ec8',
         glowScale: 4.4,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
+    ],
+  },
+  {
+    id: 'tides',
+    name: 'Tides',
+    tagline: 'A falling body stretches toward the hole and squeezes across.',
+    metersPerUnit: schwarzschildRadius(TIDE_SOLAR * M_SUN) / TIDE_RS,
+    camera: { position: [3.1, 2.6, 9.4], target: [-1.7, -5.6, -1.15] },
+    select: 'Black hole',
+    tides: true,
+    bodies: [
+      {
+        name: 'Black hole',
+        kind: 'blackhole',
+        massKg: TIDE_SOLAR * M_SUN,
+        radiusM: schwarzschildRadius(TIDE_SOLAR * M_SUN),
+        simMass: 360,
+        visualStrength: 1.05,
+        throatDepth: 6,
+        softening: 1,
+        radius: TIDE_RS * 0.92,
+        displayHorizon: TIDE_RS,
+        spin: 0.02,
+        trail: false,
+        style: 'blackhole',
+        glow: '#ff3ec8',
+        glowScale: 3.2,
         x: 0,
         z: 0,
         vx: 0,

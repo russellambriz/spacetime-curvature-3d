@@ -35,6 +35,13 @@ import {
 import { TICK_RINGS, liveDrag } from './drag.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { livePrecess, writeNewtonEllipse } from './precess.js';
+import {
+  FALL_ANGLE,
+  RELEASE_U,
+  RING_OVER_RS,
+  buildRoses,
+  liveTides,
+} from './tides.js';
 import { traceOrbitBackward } from './sim.js';
 import { liveWave } from './waves.js';
 
@@ -735,6 +742,7 @@ export class World {
     this._buildDrag();
     this._buildPrecess();
     this._buildCones();
+    this._buildTides();
     this._buildComposer();
     this.resize();
   }
@@ -1766,6 +1774,292 @@ export class World {
     }
   }
 
+  _tideStroke(color, count, width, vertexColors = false) {
+    const mat = new LineMaterial({
+      color,
+      vertexColors,
+      linewidth: width,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    mat.userData.baseWidth = width;
+    this.tideMaterials.push(mat);
+    const positions = new Float32Array(count * 3);
+    const geo = new LineGeometry();
+    geo.setPositions(positions);
+    if (vertexColors) {
+      const colors = new Float32Array(count * 3);
+      geo.setColors(colors);
+      mat.userData.colors = colors;
+    }
+    const line = new Line2(geo, mat);
+    line.frustumCulled = false;
+    line.renderOrder = 4;
+    line.raycast = () => {};
+    this.tideGroup.add(line);
+    return { line, positions, mat };
+  }
+
+  _tideBead(color) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.glowTexture,
+      color,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      opacity: 0.95,
+    }));
+    sprite.frustumCulled = false;
+    sprite.renderOrder = 5;
+    sprite.raycast = () => {};
+    this.tideGroup.add(sprite);
+    return sprite;
+  }
+
+  _buildTides() {
+    this.tideGroup = new THREE.Group();
+    this.tideGroup.visible = false;
+    this.tideGroup.frustumCulled = false;
+    this.scene.add(this.tideGroup);
+    this.tideMaterials = [];
+    const ringN = 80;
+    this.tideRing = this._tideStroke(0xffffff, ringN, 2.35, true);
+    this.tideGhost = this._tideStroke(0xb7ffd8, ringN, 1.35);
+    this.tideRelease = this._tideStroke(0x7dffa8, 96, 1.15);
+    this.tideRadial = this._tideStroke(0xff7a32, 28, 3.15);
+    this.tideTrans = this._tideStroke(0x3dff9a, 20, 2.7);
+    this.tideHead = [
+      this._tideStroke(0xff7a32, 3, 2.6),
+      this._tideStroke(0xff7a32, 3, 2.6),
+      this._tideStroke(0x3dff9a, 3, 2.4),
+      this._tideStroke(0x3dff9a, 3, 2.4),
+    ];
+    const colors = this.tideRing.mat.userData.colors;
+    for (let i = 0; i < ringN; i += 1) {
+      const theta = (i / (ringN - 1)) * Math.PI * 2;
+      const radial = Math.cos(theta) ** 2;
+      colors[i * 3] = 0.42 + 1.2 * radial;
+      colors[i * 3 + 1] = 1.4 - 0.85 * radial;
+      colors[i * 3 + 2] = 0.78 - 0.4 * radial;
+    }
+    this.tideRing.line.geometry.setColors(colors);
+    this.tideBeads = [];
+    for (let i = 0; i < 12; i += 1) {
+      const theta = (i / 12) * Math.PI * 2;
+      const radial = Math.abs(Math.cos(theta));
+      this.tideBeads.push(this._tideBead(new THREE.Color(
+        0.45 + 1.15 * radial,
+        1.35 - 0.8 * radial,
+        0.75 - 0.4 * radial,
+      )));
+    }
+    this.tideCenter = this._tideBead(new THREE.Color(0.9, 1.35, 1.05));
+    this.tideRoseMats = {
+      ring: this._tideMaterial(0x8dffc4, 1.45),
+      radial: this._tideMaterial(0xff7a32, 2.55),
+      squeeze: this._tideMaterial(0x3dff9a, 2.25),
+    };
+    this.tideRoseLines = [];
+    this.tideSig = '';
+  }
+
+  _tideMaterial(color, width) {
+    const mat = new LineMaterial({
+      color,
+      linewidth: width,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    mat.userData.baseWidth = width;
+    this.tideMaterials.push(mat);
+    return mat;
+  }
+
+  _clearRoseLines() {
+    for (let i = 0; i < this.tideRoseLines.length; i += 1) {
+      const line = this.tideRoseLines[i];
+      this.tideGroup.remove(line);
+      line.geometry.dispose();
+    }
+    this.tideRoseLines = [];
+  }
+
+  _addRoseLine(points, mat, bodies) {
+    const positions = new Float32Array(points.length * 3);
+    for (let i = 0; i < points.length; i += 1) {
+      const x = points[i][0];
+      const z = points[i][1];
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = heightAt(x, z, bodies) + 0.12;
+      positions[i * 3 + 2] = z;
+    }
+    const geo = new LineGeometry();
+    geo.setPositions(positions);
+    const line = new Line2(geo, mat);
+    line.frustumCulled = false;
+    line.renderOrder = 3;
+    line.raycast = () => {};
+    this.tideGroup.add(line);
+    this.tideRoseLines.push(line);
+  }
+
+  _setTideLine(stroke, coords, bodies, lift) {
+    const { positions, line } = stroke;
+    for (let i = 0; i < coords.length; i += 1) {
+      const x = coords[i][0];
+      const z = coords[i][1];
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = heightAt(x, z, bodies) + lift;
+      positions[i * 3 + 2] = z;
+    }
+    line.geometry.setPositions(positions);
+  }
+
+  _tideArrow(stroke, tipx, tipz, dx, dz, size, bodies) {
+    const px = -dz;
+    const pz = dx;
+    const wing = size * 0.48;
+    const back = size;
+    const bx = tipx - dx * back;
+    const bz = tipz - dz * back;
+    this._setTideLine(stroke, [
+      [bx + px * wing, bz + pz * wing],
+      [tipx, tipz],
+      [bx - px * wing, bz - pz * wing],
+    ], bodies, 0.2);
+  }
+
+  syncTides(state) {
+    this.tideGroup.visible = true;
+    const rs = liveTides.rs;
+    const cx = liveTides.cx;
+    const cz = liveTides.cz;
+    const bodies = state.bodies;
+    let sig = `${rs.toFixed(4)}|${cx.toFixed(3)}|${cz.toFixed(3)}`;
+    for (let i = 0; i < bodies.length; i += 1) {
+      const body = bodies[i];
+      sig += `|${body.x.toFixed(2)},${body.z.toFixed(2)},${body.visualStrength.toFixed(2)},${(body.displayHorizon || 0).toFixed(3)}`;
+    }
+    if (sig !== this.tideSig) {
+      this.tideSig = sig;
+      const built = buildRoses(cx, cz, rs);
+      this._clearRoseLines();
+      for (let i = 0; i < built.ring.length; i += 1) this._addRoseLine(built.ring[i], this.tideRoseMats.ring, bodies);
+      for (let i = 0; i < built.radial.length; i += 1) this._addRoseLine(built.radial[i], this.tideRoseMats.radial, bodies);
+      for (let i = 0; i < built.squeeze.length; i += 1) this._addRoseLine(built.squeeze[i], this.tideRoseMats.squeeze, bodies);
+      const release = [];
+      const reach = RELEASE_U * rs;
+      for (let i = 0; i < 96; i += 1) {
+        const a = (i / 95) * Math.PI * 2;
+        release.push([cx + Math.cos(a) * reach, cz + Math.sin(a) * reach]);
+      }
+      this._setTideLine(this.tideRelease, release, bodies, 0.08);
+    }
+    const fade = liveTides.fade;
+    const showBody = fade > 0.02;
+    this.tideRing.line.visible = showBody;
+    this.tideGhost.line.visible = showBody;
+    this.tideRadial.line.visible = showBody;
+    this.tideTrans.line.visible = showBody;
+    for (let i = 0; i < this.tideHead.length; i += 1) this.tideHead[i].line.visible = showBody;
+    const bodyMats = [
+      this.tideRing.mat,
+      this.tideGhost.mat,
+      this.tideRadial.mat,
+      this.tideTrans.mat,
+      ...this.tideHead.map((head) => head.mat),
+    ];
+    for (let i = 0; i < bodyMats.length; i += 1) {
+      const mat = bodyMats[i];
+      const dim = mat === this.tideGhost.mat ? 0.38 : mat === this.tideRelease.mat ? 0.45 : 1;
+      mat.opacity = dim * (mat === this.tideRelease.mat ? 1 : fade);
+    }
+    this.tideRelease.mat.opacity = 0.42;
+    if (!showBody) {
+      for (let i = 0; i < this.tideBeads.length; i += 1) this.tideBeads[i].visible = false;
+      this.tideCenter.visible = false;
+      return;
+    }
+    const u = liveTides.u;
+    const sr = liveTides.sr;
+    const sp = Math.max(liveTides.sp, 0.05);
+    const half = RING_OVER_RS * rs;
+    const fx = Math.cos(FALL_ANGLE);
+    const fz = Math.sin(FALL_ANGLE);
+    const px = cx + fx * u * rs;
+    const pz = cz + fz * u * rs;
+    const ring = [];
+    const ghost = [];
+    const n = this.tideRing.positions.length / 3;
+    for (let i = 0; i < n; i += 1) {
+      const theta = (i / (n - 1)) * Math.PI * 2;
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+      ring.push([px + (c * fx - s * fz) * half * sr, pz + (c * fz + s * fx) * half * sp]);
+      ghost.push([px + (c * fx - s * fz) * half, pz + (c * fz + s * fx) * half]);
+    }
+    this._setTideLine(this.tideRing, ring, bodies, 0.18);
+    this._setTideLine(this.tideGhost, ghost, bodies, 0.16);
+    const armR = half * sr;
+    const armP = half * sp;
+    const headR = Math.min(Math.max(armR * 0.26, 0.05), 0.34);
+    const headP = Math.min(Math.max(armP * 0.32, 0.045), 0.22);
+    const radialCoords = [];
+    const radialN = this.tideRadial.positions.length / 3;
+    for (let i = 0; i < radialN; i += 1) {
+      const t = i / (radialN - 1);
+      const along = -armR + headR * 0.55 + t * (2 * armR - headR * 1.1);
+      radialCoords.push([px + fx * along, pz + fz * along]);
+    }
+    const transCoords = [];
+    const transN = this.tideTrans.positions.length / 3;
+    for (let i = 0; i < transN; i += 1) {
+      const t = i / (transN - 1);
+      const along = -armP + headP * 0.45 + t * (2 * armP - headP * 0.9);
+      transCoords.push([px - fz * along, pz + fx * along]);
+    }
+    this._setTideLine(this.tideRadial, radialCoords, bodies, 0.2);
+    this._setTideLine(this.tideTrans, transCoords, bodies, 0.2);
+    const drawHead = armR > headR * 1.4;
+    this.tideHead[0].line.visible = drawHead;
+    this.tideHead[1].line.visible = drawHead;
+    if (drawHead) {
+      this._tideArrow(this.tideHead[0], px + fx * armR, pz + fz * armR, fx, fz, headR, bodies);
+      this._tideArrow(this.tideHead[1], px - fx * armR, pz - fz * armR, -fx, -fz, headR, bodies);
+    }
+    const drawSide = armP > headP * 1.35;
+    this.tideHead[2].line.visible = drawSide;
+    this.tideHead[3].line.visible = drawSide;
+    if (drawSide) {
+      const side = armP - headP * 0.15;
+      this._tideArrow(this.tideHead[2], px - fz * side, pz + fx * side, fz, -fx, headP, bodies);
+      this._tideArrow(this.tideHead[3], px + fz * side, pz - fx * side, -fz, fx, headP, bodies);
+    }
+    for (let i = 0; i < this.tideBeads.length; i += 1) {
+      const theta = (i / this.tideBeads.length) * Math.PI * 2;
+      const x = px + (Math.cos(theta) * fx - Math.sin(theta) * fz) * half * sr;
+      const z = pz + (Math.cos(theta) * fz + Math.sin(theta) * fx) * half * sp;
+      const bead = this.tideBeads[i];
+      bead.visible = true;
+      bead.position.set(x, heightAt(x, z, bodies) + 0.22, z);
+      const scale = Math.max(0.1, half * 1.15 * fade);
+      bead.scale.set(scale, scale, 1);
+      bead.material.opacity = 0.9 * fade;
+    }
+    this.tideCenter.visible = true;
+    this.tideCenter.position.set(px, heightAt(px, pz, bodies) + 0.24, pz);
+    const core = Math.max(0.07, half * 0.48 * fade);
+    this.tideCenter.scale.set(core, core, 1);
+    this.tideCenter.material.opacity = 0.95 * fade;
+  }
+
   sync(state, dt, dragging) {
     const key = state.bodies.map((body) => body.id).join('|');
     if (key !== this.viewKey) {
@@ -1943,6 +2237,13 @@ export class World {
       this.syncCones(state, dt);
     } else if (this.coneGroup) {
       this.coneGroup.visible = false;
+    }
+
+    if (liveTides.enabled) {
+      this.disk.visible = false;
+      this.syncTides(state);
+    } else if (this.tideGroup) {
+      this.tideGroup.visible = false;
     }
   }
 
@@ -2265,6 +2566,15 @@ export class World {
       this.renderer.getSize(this._viewSize);
       this.coneLineMat.resolution.copy(this._viewSize);
       this.coneLineMat.linewidth = Math.min(width, height) < 700 ? 3.15 : 2.4;
+    }
+    if (this.tideMaterials) {
+      this.renderer.getSize(this._viewSize);
+      const narrow = Math.min(width, height) < 700;
+      for (let i = 0; i < this.tideMaterials.length; i += 1) {
+        const mat = this.tideMaterials[i];
+        mat.resolution.copy(this._viewSize);
+        mat.linewidth = (mat.userData.baseWidth || 2.4) * (narrow ? 1.25 : 1);
+      }
     }
   }
 

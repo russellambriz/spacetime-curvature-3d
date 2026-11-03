@@ -10,6 +10,7 @@ import {
   sci,
 } from './constants.js';
 import { coneMetrics } from './cones.js';
+import { tideMetrics } from './tides.js';
 import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
 import { precessMetrics } from './precess.js';
@@ -288,6 +289,57 @@ function coneFormulas(cone, rsMeters) {
   ];
 }
 
+const GEE = 9.80665;
+
+function formatGee(accel) {
+  if (!Number.isFinite(accel)) return '—';
+  const ratio = Math.abs(accel) / GEE;
+  if (ratio >= 10000 || (ratio > 0 && ratio < 0.01)) return `${sci(ratio, 3)} g`;
+  if (ratio >= 100) return `${Math.round(ratio)} g`;
+  if (ratio >= 10) return `${ratio.toFixed(1)} g`;
+  return `${ratio.toFixed(2)} g`;
+}
+
+function tideFormulas(tide) {
+  const where = `${tide.u.toFixed(2)} rₛ`;
+  const radius = tide.u * tide.rs;
+  const shape = `${tide.sr.toFixed(2)} × ${tide.sp.toFixed(2)}`;
+  const outside = tide.breakOverRs > 1.05;
+  const horizons = tide.breakOverRs >= 10 ? tide.breakOverRs.toFixed(0) : tide.breakOverRs.toFixed(2);
+  return [
+    {
+      key: 'tide-radial',
+      title: 'Radial stretch across 2 m',
+      tex: '\\Delta a_{\\parallel} = \\dfrac{2GM}{r^{3}}\\, L',
+      value: formatGee(tide.radial),
+      note: `L = 2 m at ${where}, ${formatLength(radius)} from this ${formatMass(tide.massKg)} hole. Feet and head, lined up with the fall, pull apart at this rate. It is the radial geodesic deviation, and it falls as 1/r³.`,
+    },
+    {
+      key: 'tide-transverse',
+      title: 'Transverse squeeze across 2 m',
+      tex: '\\Delta a_{\\perp} = -\\dfrac{GM}{r^{3}}\\, L',
+      value: formatGee(Math.abs(tide.transverse)),
+      note: `Half the radial figure, and inward, in each sideways direction. The green arms are one of those. Released round at ${tide.releaseU.toFixed(2)} rₛ, the ring is now ${shape}, length times width. The arms draw those factors. The equation is the linear one, for a separation small beside r, so the ring is enlarged.`,
+    },
+    {
+      key: 'tide-horizon',
+      title: 'Stretch at this horizon',
+      tex: '\\Delta a_{\\parallel}(r_{s}) = \\dfrac{c^{2} L}{r_{s}^{2}}',
+      value: formatGee(tide.horizonRadial),
+      note: `Across 2 m on the horizon of this hole. The tide stays finite there. It diverges at the center, not at the horizon. Sagittarius A*, 4.3 million suns, stretches the same 2 m by ${formatGee(tide.sgrHorizon)} at its own horizon.`,
+    },
+    {
+      key: 'tide-break',
+      title: 'Where 2 m feels one g',
+      tex: 'r_{1g} = \\left(\\dfrac{2GML}{g}\\right)^{1/3}',
+      value: `${horizons} rₛ`,
+      note: outside
+        ? `A head-to-toe difference of one g, ${formatLength(tide.breakR)} out. This horizon is ${formatLength(tide.rs)}, so the tear begins about ${horizons} horizons out.`
+        : `A head-to-toe difference of one g, ${formatLength(tide.breakR)} out. That radius is inside this horizon, so a 2 m body can cross before the stretch reaches one g.`,
+    },
+  ];
+}
+
 function waveFormulas(wave) {
   return [
     {
@@ -328,6 +380,7 @@ export function buildReadout(body, bodies, metersPerUnit) {
   const rsSelf = schwarzschildRadius(body.massKg);
   const drag = dragMetrics(bodies, metersPerUnit);
   const cones = coneMetrics(bodies);
+  const tides = tideMetrics(bodies);
   const formulas = [];
   const spinningHole = Boolean(drag) && body.kind === 'blackhole' && body.kerrSpin > 0;
 
@@ -516,6 +569,7 @@ export function buildReadout(body, bodies, metersPerUnit) {
     formulas.unshift(...waveFormulas(wave));
   }
   if (lens) formulas.unshift(...lensFormulas(lens));
+  if (tides) formulas.unshift(...tideFormulas(tides));
   if (drag) {
     stats.push(
       { label: 'Spin â', value: drag.spin.toFixed(2), detail: 'Kerr parameter' },
@@ -523,6 +577,21 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
     formulas.unshift(...dragFormulas(drag));
   }
+  if (tides && !partner) {
+    stats.pop();
+    stats.pop();
+    stats.push(
+      { label: 'Probe', value: `${tides.u.toFixed(2)} rₛ`, detail: `released at ${tides.releaseU.toFixed(2)} rₛ` },
+      { label: 'Length × width', value: `${tides.sr.toFixed(2)} × ${tides.sp.toFixed(2)}`, detail: 'started at 1 × 1' },
+      { label: 'Proper time', value: tides.tau < 1e-6 ? '0 ms' : formatDuration(tides.tau), detail: `of ${formatDuration(tides.tauTotal)}, slowed on screen` },
+    );
+  } else if (tides) {
+    stats.push(
+      { label: 'Probe', value: `${tides.u.toFixed(2)} rₛ`, detail: 'falling from rest' },
+      { label: 'Length × width', value: `${tides.sr.toFixed(2)} × ${tides.sp.toFixed(2)}`, detail: 'started at 1 × 1' },
+    );
+  }
+
   if (cones) {
     const rsMeters = schwarzschildRadius(cones.massKg);
     stats.push(
@@ -537,6 +606,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
   }
 
   let motion = null;
+  if (tides) {
+    motion = 'Orange stretches and green squeezes. The pale ring is the shape at release. Marks on the far side are the tide at that radius: radial arrows are twice the transverse ones, and both fall as 1/r³. The ring steps inward evenly in radius. Proper time in the panel passes faster near the hole, which is why a real drop lingers, then plunges. That runaway stretch is spaghettification.';
+  }
   if (cones) {
     motion = 'Up is later. The grid is one moment, and the magenta ring is the horizon. Green cones are outside it, magenta cones inside. Orange is a stone falling through. Tap a cone, or press the arrow keys, to read the tilt there.';
   }
@@ -580,7 +652,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
           ? `${cones.station.name} at ${cones.ratio.toFixed(2)} horizons`
           : lens
             ? 'Lensing the rays drawn around it'
-            : 'Alone on the sheet',
+            : tides
+              ? 'Tides on a body falling from rest'
+              : 'Alone on the sheet',
     stats,
     formulas,
     motion,

@@ -10,6 +10,8 @@
  * is applied in the orbit integrator; the sheet stays a softened well.
  * Light cones do not change this height. That preset leaves the sheet flat:
  * the grid is one moment of time, and the cones stand up from it.
+ * Tides do not change this height either. The falling ring is geodesic
+ * deviation laid on the sheet, not another bend in it.
  * The vertex shader in world.js must implement the same functions.
  * throatDepth 0 keeps the original shallow continuation (the lens preset).
  * A positive throatDepth, used by the black-hole preset, plunges inside the
