@@ -5,6 +5,7 @@ import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 import { updateLiveDrag } from './drag.js';
 import { livePrecess, orbitElements, precessKick, resetLivePrecess } from './precess.js';
+import { resetLiveIsco, updateLiveIsco } from './isco.js';
 import { resetLiveTides, updateLiveTides } from './tides.js';
 
 const GRAVITY_SOFT = 0.55;
@@ -93,6 +94,7 @@ export function createState(presetId = 'sun-earth') {
     cones: false,
     coneStation: null,
     tides: false,
+    isco: false,
   };
 }
 
@@ -114,6 +116,7 @@ export function loadPreset(state, presetId) {
   state.cones = Boolean(preset.cones);
   state.coneStation = preset.cones ? 1 : null;
   state.tides = Boolean(preset.tides);
+  state.isco = Boolean(preset.isco);
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
@@ -121,12 +124,14 @@ export function loadPreset(state, presetId) {
   state.selectedId = selected.id;
   resetLivePrecess(state);
   resetLiveTides();
+  resetLiveIsco();
   computeAccelerations(state.bodies);
   updateLiveWave(state);
   updateLiveLens(state);
   updateLiveDrag(state, 0);
   updateLiveCones(state);
   updateLiveTides(state, 0);
+  updateLiveIsco(state, 0);
   return state;
 }
 

@@ -36,6 +36,14 @@ import { TICK_RINGS, liveDrag } from './drag.js';
 import { liveLens, sampleRay, UNIT_RAYS } from './lens.js';
 import { livePrecess, writeNewtonEllipse } from './precess.js';
 import {
+  ISCO_U,
+  PLUNGE,
+  PLUNGE_ANGLE,
+  STABLE_U,
+  liveIsco,
+  samplePlunge,
+} from './isco.js';
+import {
   FALL_ANGLE,
   RELEASE_U,
   RING_OVER_RS,
@@ -743,6 +751,7 @@ export class World {
     this._buildPrecess();
     this._buildCones();
     this._buildTides();
+    this._buildIsco();
     this._buildComposer();
     this.resize();
   }
@@ -2060,6 +2069,199 @@ export class World {
     this.tideCenter.material.opacity = 0.95 * fade;
   }
 
+  _iscoStroke(color, count, width) {
+    const mat = new LineMaterial({
+      color,
+      linewidth: width,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    mat.userData.baseWidth = width;
+    this.iscoMaterials.push(mat);
+    const positions = new Float32Array(count * 3);
+    const geo = new LineGeometry();
+    geo.setPositions(positions);
+    const line = new Line2(geo, mat);
+    line.frustumCulled = false;
+    line.renderOrder = 4;
+    line.raycast = () => {};
+    this.iscoGroup.add(line);
+    return { line, positions, mat, count };
+  }
+
+  _iscoBead(color) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.glowTexture,
+      color,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      opacity: 0.95,
+    }));
+    sprite.frustumCulled = false;
+    sprite.renderOrder = 5;
+    sprite.raycast = () => {};
+    this.iscoGroup.add(sprite);
+    return sprite;
+  }
+
+  _buildIsco() {
+    this.iscoGroup = new THREE.Group();
+    this.iscoGroup.visible = false;
+    this.iscoGroup.frustumCulled = false;
+    this.scene.add(this.iscoGroup);
+    this.iscoMaterials = [];
+    this.iscoRing = this._iscoStroke(0x3dff9a, 161, 3.15);
+    this.iscoStable = this._iscoStroke(0x6ad7ff, 161, 1.9);
+    this.iscoStable.mat.opacity = 0.9;
+    this.iscoPhoton = this._iscoStroke(0xff5ec8, 161, 1.65);
+    this.iscoPlunge = this._iscoStroke(0xff7a32, PLUNGE.length, 2.35);
+    this.iscoComet = this._iscoStroke(0xffd2aa, 32, 3.35);
+    const tickPositions = new Float32Array(12 * 2 * 3);
+    const tickGeo = new THREE.BufferGeometry();
+    tickGeo.setAttribute('position', new THREE.BufferAttribute(tickPositions, 3));
+    this.iscoTicks = new THREE.LineSegments(tickGeo, new THREE.LineBasicMaterial({
+      color: 0xc8ffe2,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    }));
+    this.iscoTicks.frustumCulled = false;
+    this.iscoTicks.renderOrder = 4;
+    this.iscoTicks.raycast = () => {};
+    this.iscoGroup.add(this.iscoTicks);
+    this.iscoBeads = {
+      stable: this._iscoBead(new THREE.Color(0.45, 0.85, 1.45)),
+      isco: this._iscoBead(new THREE.Color(0.35, 1.45, 0.72)),
+      plunge: this._iscoBead(new THREE.Color(1.45, 0.52, 0.16)),
+    };
+    this.iscoSig = '';
+  }
+
+  _setIscoLine(stroke, coords, bodies, lift) {
+    const { positions, line } = stroke;
+    for (let i = 0; i < coords.length; i += 1) {
+      const x = coords[i][0];
+      const z = coords[i][1];
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = heightAt(x, z, bodies) + lift;
+      positions[i * 3 + 2] = z;
+    }
+    line.geometry.setPositions(positions);
+  }
+
+  _iscoRingCoords(cx, cz, radius, count) {
+    const coords = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / (count - 1)) * Math.PI * 2;
+      coords.push([cx + Math.cos(angle) * radius, cz + Math.sin(angle) * radius]);
+    }
+    return coords;
+  }
+
+  _placeIscoBead(sprite, x, z, bodies, scale, opacity) {
+    sprite.visible = opacity > 0.02;
+    sprite.position.set(x, heightAt(x, z, bodies) + 0.3, z);
+    sprite.scale.set(scale, scale, 1);
+    sprite.material.opacity = opacity;
+  }
+
+  syncIsco(state) {
+    this.iscoGroup.visible = true;
+    const rs = liveIsco.rs;
+    const cx = liveIsco.cx;
+    const cz = liveIsco.cz;
+    const bodies = state.bodies;
+    let sig = `${rs.toFixed(4)}|${cx.toFixed(3)}|${cz.toFixed(3)}`;
+    for (let i = 0; i < bodies.length; i += 1) {
+      const body = bodies[i];
+      sig += `|${body.x.toFixed(2)},${body.z.toFixed(2)},${body.visualStrength.toFixed(2)},${(body.displayHorizon || 0).toFixed(3)},${(body.throatDepth || 0).toFixed(2)}`;
+    }
+    if (sig !== this.iscoSig) {
+      this.iscoSig = sig;
+      this._setIscoLine(this.iscoRing, this._iscoRingCoords(cx, cz, ISCO_U * rs, this.iscoRing.count), bodies, 0.2);
+      this._setIscoLine(this.iscoStable, this._iscoRingCoords(cx, cz, STABLE_U * rs, this.iscoStable.count), bodies, 0.12);
+      this._setIscoLine(this.iscoPhoton, this._iscoRingCoords(cx, cz, 1.5 * rs, this.iscoPhoton.count), bodies, 0.16);
+      const plunge = [];
+      for (let i = 0; i < PLUNGE.length; i += 1) {
+        const sample = PLUNGE[i];
+        const angle = sample.phi + PLUNGE_ANGLE;
+        plunge.push([
+          cx + Math.cos(angle) * sample.u * rs,
+          cz + Math.sin(angle) * sample.u * rs,
+        ]);
+      }
+      this._setIscoLine(this.iscoPlunge, plunge, bodies, 0.22);
+      const ticks = this.iscoTicks.geometry.attributes.position.array;
+      for (let i = 0; i < 12; i += 1) {
+        const angle = (i / 12) * Math.PI * 2;
+        const inner = ISCO_U * rs;
+        const outer = inner + rs * 0.18;
+        const x0 = cx + Math.cos(angle) * inner;
+        const z0 = cz + Math.sin(angle) * inner;
+        const x1 = cx + Math.cos(angle) * outer;
+        const z1 = cz + Math.sin(angle) * outer;
+        const base = i * 6;
+        ticks[base] = x0;
+        ticks[base + 1] = heightAt(x0, z0, bodies) + 0.2;
+        ticks[base + 2] = z0;
+        ticks[base + 3] = x1;
+        ticks[base + 4] = heightAt(x1, z1, bodies) + 0.2;
+        ticks[base + 5] = z1;
+      }
+      this.iscoTicks.geometry.attributes.position.needsUpdate = true;
+    }
+    const fade = liveIsco.fade;
+    const bead = Math.max(0.34, rs * 0.42);
+    const iscoAngle = liveIsco.iscoPhi;
+    const stableAngle = liveIsco.stablePhi;
+    this._placeIscoBead(
+      this.iscoBeads.isco,
+      cx + Math.cos(iscoAngle) * ISCO_U * rs,
+      cz + Math.sin(iscoAngle) * ISCO_U * rs,
+      bodies,
+      bead * 1.15,
+      0.95,
+    );
+    this._placeIscoBead(
+      this.iscoBeads.stable,
+      cx + Math.cos(stableAngle) * STABLE_U * rs,
+      cz + Math.sin(stableAngle) * STABLE_U * rs,
+      bodies,
+      bead * 0.82,
+      0.8,
+    );
+    const plungeAngle = liveIsco.plungePhi + PLUNGE_ANGLE;
+    this._placeIscoBead(
+      this.iscoBeads.plunge,
+      cx + Math.cos(plungeAngle) * liveIsco.plungeU * rs,
+      cz + Math.sin(plungeAngle) * liveIsco.plungeU * rs,
+      bodies,
+      bead * 1.35,
+      0.98 * fade,
+    );
+    const comet = [];
+    const cometN = this.iscoComet.count;
+    for (let i = 0; i < cometN; i += 1) {
+      const f = Math.max(0, liveIsco.along - 0.085 * (1 - i / (cometN - 1)));
+      const sample = samplePlunge(f);
+      const angle = sample.phi + PLUNGE_ANGLE;
+      comet.push([
+        cx + Math.cos(angle) * sample.u * rs,
+        cz + Math.sin(angle) * sample.u * rs,
+      ]);
+    }
+    this._setIscoLine(this.iscoComet, comet, bodies, 0.28);
+    this.iscoComet.line.visible = liveIsco.along > 0.02 && fade > 0.02;
+    this.iscoComet.mat.opacity = 0.95 * fade;
+  }
+
   sync(state, dt, dragging) {
     const key = state.bodies.map((body) => body.id).join('|');
     if (key !== this.viewKey) {
@@ -2244,6 +2446,15 @@ export class World {
       this.syncTides(state);
     } else if (this.tideGroup) {
       this.tideGroup.visible = false;
+    }
+
+    if (liveIsco.enabled) {
+      this.disk.visible = false;
+      this.photon.visible = false;
+      this.sharpRing.visible = false;
+      this.syncIsco(state);
+    } else if (this.iscoGroup) {
+      this.iscoGroup.visible = false;
     }
   }
 
@@ -2572,6 +2783,15 @@ export class World {
       const narrow = Math.min(width, height) < 700;
       for (let i = 0; i < this.tideMaterials.length; i += 1) {
         const mat = this.tideMaterials[i];
+        mat.resolution.copy(this._viewSize);
+        mat.linewidth = (mat.userData.baseWidth || 2.4) * (narrow ? 1.25 : 1);
+      }
+    }
+    if (this.iscoMaterials) {
+      this.renderer.getSize(this._viewSize);
+      const narrow = Math.min(width, height) < 700;
+      for (let i = 0; i < this.iscoMaterials.length; i += 1) {
+        const mat = this.iscoMaterials[i];
         mat.resolution.copy(this._viewSize);
         mat.linewidth = (mat.userData.baseWidth || 2.4) * (narrow ? 1.25 : 1);
       }

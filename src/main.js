@@ -17,6 +17,7 @@ import { updateLiveDrag } from './drag.js';
 import { updateLiveLens } from './lens.js';
 import { updateLiveWave } from './waves.js';
 import { clearPrecessMarks, updateLivePrecess } from './precess.js';
+import { updateLiveIsco } from './isco.js';
 import { updateLiveTides } from './tides.js';
 
 const canvas = document.getElementById('scene');
@@ -340,6 +341,9 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === '0') {
     const button = ui.presets.querySelectorAll('.preset')[9];
     if (button) button.click();
+  } else if (event.key === '-' || event.key === '_') {
+    const button = ui.presets.querySelector('[data-preset="isco"]');
+    if (button) button.click();
   }
 });
 
@@ -361,6 +365,7 @@ function frame(now) {
   updateLivePrecess(state);
   updateLiveCones(state);
   updateLiveTides(state, dt);
+  updateLiveIsco(state, dt);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();

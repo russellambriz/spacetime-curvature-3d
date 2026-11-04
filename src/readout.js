@@ -10,6 +10,7 @@ import {
   sci,
 } from './constants.js';
 import { coneMetrics } from './cones.js';
+import { iscoMetrics } from './isco.js';
 import { tideMetrics } from './tides.js';
 import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
@@ -340,6 +341,45 @@ function tideFormulas(tide) {
   ];
 }
 
+function formatFall(seconds) {
+  if (!(seconds > 1e-8)) return '0 ms';
+  return formatDuration(seconds);
+}
+
+function iscoFormulas(isco) {
+  const kappa = isco.kappaRatio.toFixed(2);
+  return [
+    {
+      key: 'isco-radius',
+      title: 'Innermost stable circular orbit',
+      tex: 'r_{\\mathrm{ISCO}} = \\dfrac{6GM}{c^{2}}',
+      value: formatLength(isco.iscoRadius),
+      note: `Three Schwarzschild radii, ${formatLength(isco.rs)} each, for this ${formatMass(isco.massKg)} hole. A distant clock sees one revolution in ${formatDuration(isco.period)}. At five horizons the same clock sees ${formatDuration(isco.stablePeriod)}, and a small radial nudge oscillates at ${kappa} of the orbital frequency, so that orbit holds. Inside three horizons the frequency is imaginary: the nudge runs away. The cyan ring is the stable orbit. The bright green ring is this boundary. Around Sagittarius A* the same last orbit takes ${formatDuration(isco.sgrPeriod)}.`,
+    },
+    {
+      key: 'isco-energy',
+      title: 'Energy on the last orbit',
+      tex: '\\dfrac{E}{mc^{2}} = \\dfrac{r - 2M}{\\sqrt{r(r - 3M)}}',
+      value: `${(isco.binding * 100).toFixed(2)}% bound`,
+      note: `At three horizons this is √(8/9), so the particle is bound by ${(isco.binding * 100).toFixed(2)}% of its rest energy. That is the most a thin disk around a non-spinning hole can radiate before the gas plunges. The orbit at five horizons is bound by ${(isco.stableBinding * 100).toFixed(2)}%. Spin, as on the frame-dragging preset, moves the last orbit inward and raises the fraction.`,
+    },
+    {
+      key: 'isco-speed',
+      title: 'Speed on the last orbit',
+      tex: 'v = c\\sqrt{\\dfrac{M}{r - 2M}}',
+      value: `${isco.localSpeed.toFixed(3)} c`,
+      note: `What a hovering observer measures. At the ISCO it is exactly half the speed of light. At five horizons it is ${isco.stableSpeed.toFixed(3)} c. The magenta ring inside, at ${formatLength(isco.photonRadius)}, is the photon sphere. A massive particle would need infinite energy to circle there.`,
+    },
+    {
+      key: 'isco-plunge',
+      title: 'Released just inside',
+      tex: '\\left(\\dfrac{dr}{d\\tau}\\right)^{2} = E^{2} - \\left(1 - \\dfrac{r_{s}}{r}\\right)\\left(1 + \\dfrac{L^{2}}{r^{2}}\\right)',
+      value: `${isco.plungeU.toFixed(2)} rₛ`,
+      note: `The orange path carries the ISCO energy and angular momentum, starting at ${isco.plungeU0.toFixed(2)} rₛ, where it is almost at rest radially. It winds ${isco.turns.toFixed(2)} turns and is drawn down to ${isco.plungeU1.toFixed(2)} rₛ. Proper time so far is ${formatFall(isco.plungeTau)}; a distant clock has advanced ${formatFall(isco.plungeCoord)}. The whole drawn fall takes ${formatFall(isco.plungeTauEnd)} of proper time and ${formatFall(isco.plungeCoordEnd)} on the distant clock. Followed to the horizon, proper time would stay finite and the distant clock would not finish. The bead steps evenly in radius, and the loop is slowed, so the spiral can be seen. Most of the proper time is the slow peel off the last orbit.`,
+    },
+  ];
+}
+
 function waveFormulas(wave) {
   return [
     {
@@ -381,6 +421,7 @@ export function buildReadout(body, bodies, metersPerUnit) {
   const drag = dragMetrics(bodies, metersPerUnit);
   const cones = coneMetrics(bodies);
   const tides = tideMetrics(bodies);
+  const isco = iscoMetrics(bodies);
   const formulas = [];
   const spinningHole = Boolean(drag) && body.kind === 'blackhole' && body.kerrSpin > 0;
 
@@ -570,6 +611,7 @@ export function buildReadout(body, bodies, metersPerUnit) {
   }
   if (lens) formulas.unshift(...lensFormulas(lens));
   if (tides) formulas.unshift(...tideFormulas(tides));
+  if (isco) formulas.unshift(...iscoFormulas(isco));
   if (drag) {
     stats.push(
       { label: 'Spin â', value: drag.spin.toFixed(2), detail: 'Kerr parameter' },
@@ -577,6 +619,16 @@ export function buildReadout(body, bodies, metersPerUnit) {
     );
     formulas.unshift(...dragFormulas(drag));
   }
+  if (isco && !partner) {
+    stats.pop();
+    stats.pop();
+    stats.push(
+      { label: 'Last orbit', value: formatLength(isco.iscoRadius), detail: `${formatDuration(isco.period)} per revolution` },
+      { label: 'Bound', value: `${(isco.binding * 100).toFixed(2)}%`, detail: 'of rest energy' },
+      { label: 'Plunge', value: `${isco.plungeU.toFixed(2)} rₛ`, detail: `from ${isco.plungeU0.toFixed(2)} rₛ` },
+    );
+  }
+
   if (tides && !partner) {
     stats.pop();
     stats.pop();
@@ -606,6 +658,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
   }
 
   let motion = null;
+  if (isco) {
+    motion = 'The bright green ring is the last stable orbit, at three horizons. The cyan ring at five holds: a nudge there only ripples. The orange path starts just inside the green ring, with that orbit’s energy, and falls in. The magenta ring is the photon sphere, where light can circle and matter cannot.';
+  }
   if (tides) {
     motion = 'Orange stretches and green squeezes. The pale ring is the shape at release. Marks on the far side are the tide at that radius: radial arrows are twice the transverse ones, and both fall as 1/r³. The ring steps inward evenly in radius. Proper time in the panel passes faster near the hole, which is why a real drop lingers, then plunges. That runaway stretch is spaghettification.';
   }
@@ -654,7 +709,9 @@ export function buildReadout(body, bodies, metersPerUnit) {
             ? 'Lensing the rays drawn around it'
             : tides
               ? 'Tides on a body falling from rest'
-              : 'Alone on the sheet',
+              : isco
+                ? 'Last stable orbit at three horizons'
+                : 'Alone on the sheet',
     stats,
     formulas,
     motion,

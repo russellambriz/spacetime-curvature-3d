@@ -13,6 +13,7 @@ import {
   schwarzschildRadius,
 } from './constants.js';
 import { CONE_RS } from './cones.js';
+import { ISCO_RS, ISCO_SOLAR } from './isco.js';
 import { TIDE_RS, TIDE_SOLAR } from './tides.js';
 import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
 import {
@@ -575,6 +576,38 @@ export const PRESETS = [
         style: 'blackhole',
         glow: '#ff3ec8',
         glowScale: 3.2,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
+    ],
+  },
+  {
+    id: 'isco',
+    name: 'Last orbit',
+    tagline: 'Outside three horizons a circular orbit holds. Inside it, the star falls.',
+    metersPerUnit: schwarzschildRadius(ISCO_SOLAR * M_SUN) / ISCO_RS,
+    camera: { position: [0.6, 16.4, 13.6], target: [0.05, -4.6, 0.05] },
+    select: 'Black hole',
+    isco: true,
+    bodies: [
+      {
+        name: 'Black hole',
+        kind: 'blackhole',
+        massKg: ISCO_SOLAR * M_SUN,
+        radiusM: schwarzschildRadius(ISCO_SOLAR * M_SUN),
+        simMass: 420,
+        visualStrength: 1.05,
+        throatDepth: 5,
+        softening: 1,
+        radius: ISCO_RS * 0.92,
+        displayHorizon: ISCO_RS,
+        spin: 0.02,
+        trail: false,
+        style: 'blackhole',
+        glow: '#ff3ec8',
+        glowScale: 3.3,
         x: 0,
         z: 0,
         vx: 0,
