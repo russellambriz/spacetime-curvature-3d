@@ -20,6 +20,8 @@ The tides preset drops a round ring from rest around a ten-solar-mass hole. Oran
 
 The last-orbit preset draws the innermost stable circular orbit of that same kind of hole. A cyan ring at five horizons holds. The bright green ring at three is the ISCO. An orange geodesic, released just inside it, peels away and falls in.
 
+The wormhole preset turns the sheet into a tunnel. The grid narrows, stands vertical, and opens into a second universe. An amber ring marks the throat. An orange ship crosses it.
+
 ![Light rays bending around a black hole. Wide rays escape, close rays fall in, and the math panel reads the deflection](media/lens.png)
 
 ![A spinning black hole. The grid spirals into the well, an amber ring marks the ergosphere, and the math panel reads the frame-dragging period](media/frame-drag.png)
@@ -31,6 +33,8 @@ The last-orbit preset draws the innermost stable circular orbit of that same kin
 ![A ring falling into a ten-solar-mass hole. Orange arms have stretched, green arms have squeezed, and the math panel reads the tide across 2 m](media/tides.png)
 
 ![The last stable orbit. A cyan ring holds at five horizons, the bright green ring is the ISCO at three, and an orange geodesic falls inside it](media/isco.png)
+
+![A wormhole. The neon grid narrows to an amber throat and opens into a second universe, and a ship crosses](media/wormhole.png)
 
 ![Two neutron stars on the sheet, with the outgoing gravitational-wave ripple and the live wave math](media/waves.png)
 
@@ -61,7 +65,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 - Click or tap empty sheet to add a mass on a circular orbit around the heaviest body. Right-click also removes a mass.
 - Change the selected mass and the time scale. Trails can be toggled. Reset restores the preset. Panels collapse on iPad and can be opened from Math and Why.
 - The eye button hides every panel for a full-screen view. `H`, or a double-tap on empty space, does the same. The title and the bottom controls can also collapse on their own.
-- Keys: `1`–`9` presets, `0` the tides preset, `-` the last-orbit preset, `Space` pause, `T` trails, `R` reset, `H` hide the interface. On the light-cone preset, the left and right arrow keys move between cones.
+- Keys: `1`–`9` presets, `0` the tides preset, `-` the last-orbit preset, `=` the wormhole preset, `Space` pause, `T` trails, `R` reset, `H` hide the interface. On the light-cone preset, the left and right arrow keys move between cones.
 
 ## Presets
 
@@ -78,6 +82,7 @@ Open the URL Vite prints. `npm run build` writes a static site to `dist/`.
 | Light cones | Painlevé–Gullstrand light cones of a 4.3 million solar-mass hole, the mass of Sagittarius A*. Up is later. The river speed is \(c\sqrt{r_s/r}\). On the horizon the outward ray stands still. Inside, the future cone points only in. |
 | Tides | Geodesic deviation around a 10 solar-mass hole. A ring is released from rest at \(6.15\, r_s\). It stretches along the fall and squeezes sideways. Marks on the far side are the tide at that radius, falling as \(1/r^3\). |
 | Last orbit | The innermost stable circular orbit of a 10 solar-mass Schwarzschild hole. The cyan ring at \(5\, r_s\) is stable. The bright green ring at \(3\, r_s\) is the ISCO, where a hovering observer measures \(c/2\). The orange curve has that orbit’s energy and angular momentum and is released at \(2.85\, r_s\), so it falls in. |
+| Wormhole | A Morris–Thorne throat of radius 1 AU. The sheet is the catenoid \(r = \sqrt{b_0^2 + l^2}\), stretched by 2.40 along the tunnel so both mouths fit. The amber ring is the throat. A ship crosses the 4 AU tunnel at \(0.2c\). Clocks agree, because the redshift function is zero. |
 
 ## The math
 
@@ -152,7 +157,16 @@ On the last-orbit preset the panel reads the circular geodesics of a Schwarzschi
 
 The rings and the orange curve are the geodesics, laid on the embedding. The bead steps evenly in radius, and the loop is slowed, so the two turns of the spiral can be seen. Most of the proper time is the slow peel just inside the last orbit. A distant clock advances further and would not finish if the fall were followed onto the horizon. The real periods stay in the panel: a few milliseconds for this ten-solar-mass hole, about half an hour for Sagittarius A*. A marble rolling in the well would circle at any height. The stability is the geodesic, not the slope.
 
-The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, and a softened potential well for stars and planets. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
+On the wormhole preset the panel reads the tunnel:
+
+- Circumferential radius, \(r(l) = \sqrt{b_0^2 + l^2}\)
+- The isometric embedding, \(z(l) = b_0 \sinh^{-1}(l/b_0)\), and the factor 2.40 by which the drawing stretches that length
+- Energy density at the throat, \(\rho = -c^2 b_0^2 / (8\pi G r^4)\), negative
+- Proper time to cross at \(0.2c\), and the redshift \(e^{\Phi} = 1\)
+
+The throat radius on screen is one astronomical unit. The tunnel drawn from mouth to mouth is four. At that size the negative density is a few tonnes per cubic metre, about as dense as rock and with the wrong sign. The tension is that density times \(c^2\). A throat one metre across would need a couple of hundred million times nuclear density, still negative. The slider changes the throat, and the density falls as \(1/b_0^2\). The ship moves at constant proper speed. The pauses at the mouths are the animation. The grid fades where the drawing stops. The flare does not.
+
+The “How curvature works” note states Einstein’s field equations, \(G_{\mu\nu} = 8\pi G / c^4 \, T_{\mu\nu}\), and the shapes actually used on the sheet: a Flamm paraboloid for a black hole, a softened potential well for stars and planets, and a catenoid for the wormhole. Planetary dimples are drawn deeper than their true mass ratio so they stay visible. The readout does not use that exaggeration.
 
 ## Deploy
 

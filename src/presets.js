@@ -14,6 +14,7 @@ import {
 } from './constants.js';
 import { CONE_RS } from './cones.js';
 import { ISCO_RS, ISCO_SOLAR } from './isco.js';
+import { WORM_B0 } from './worm.js';
 import { TIDE_RS, TIDE_SOLAR } from './tides.js';
 import { DRAG_SPIN, STAR_OVER_RS, kerrHorizonOverRs } from './drag.js';
 import {
@@ -608,6 +609,36 @@ export const PRESETS = [
         style: 'blackhole',
         glow: '#ff3ec8',
         glowScale: 3.3,
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+      },
+    ],
+  },
+  {
+    id: 'wormhole',
+    name: 'Wormhole',
+    tagline: 'The sheet narrows to a throat, then opens into another universe.',
+    metersPerUnit: AU / WORM_B0,
+    camera: { position: [8.2, 4.4, 30], target: [0.1, -0.2, 0] },
+    select: 'Wormhole',
+    wormhole: true,
+    bodies: [
+      {
+        name: 'Wormhole',
+        kind: 'wormhole',
+        massKg: 1,
+        radiusM: AU,
+        simMass: 1,
+        visualStrength: 0,
+        softening: 1,
+        radius: WORM_B0,
+        spin: 0,
+        trail: false,
+        style: 'generic',
+        glow: '#3dff9a',
+        glowScale: 1,
         x: 0,
         z: 0,
         vx: 0,

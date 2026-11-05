@@ -2,7 +2,7 @@ import katex from 'katex';
 import { PRESETS } from './presets.js';
 import { CONSTANTS_NOTE, buildReadout } from './readout.js';
 import { applyMass, massRatio, selectedBody } from './sim.js';
-import { formatMass } from './constants.js';
+import { formatLength, formatMass } from './constants.js';
 
 const MASS_MIN = Math.log(0.1);
 const MASS_MAX = Math.log(8);
@@ -78,7 +78,7 @@ export class UI {
     this.btnWhy.setAttribute('aria-expanded', this.explain.classList.contains('open') ? 'true' : 'false');
     if (window.matchMedia('(pointer: coarse)').matches) {
       const hint = document.getElementById('hint');
-      hint.textContent = 'Tap to inspect or add · hold to drag or remove · pinch to zoom · double-tap empty space hides the interface · on Light cones, tap a cone';
+      hint.textContent = 'Tap to inspect or add · hold to drag or remove · pinch to zoom · double-tap empty space hides the interface · on Light cones, tap a cone · Wormhole is the tunnel';
     }
     this.restoreHud();
   }
@@ -140,6 +140,12 @@ export class UI {
       ['p', 'Curvature shows up as a tide. Two nearby free-fall paths do not stay the same distance apart. A Schwarzschild hole stretches a body along the fall and squeezes it the other two ways:'],
       ['tex', '\\Delta a_{\\parallel} = \\dfrac{2GM}{r^{3}} L'],
       ['p', 'The Tides preset drops a round ring from rest at 6.15 Schwarzschild radii around a hole of ten suns. Orange arms are the radial stretch and green arms are the squeeze, integrated along that fall. The ring is drawn large so the factors can be seen, and it steps inward evenly in radius. Proper time, read in the math panel, passes faster near the hole. The accelerations there are for a person two meters tall. Around this hole they are enormous well outside the horizon. Around Sagittarius A*, millions of times heavier, the same person can cross the horizon intact. The horizon is not where the tide becomes infinite.'],
+      ['p', 'A wormhole is a tunnel, not a deeper well. The Wormhole preset embeds the simplest traversable one: no tidal force, and a redshift function of zero. The circumferential radius and the height of that slice are'],
+      ['tex', 'r(l) = \\sqrt{b_{0}^{2} + l^{2}}'],
+      ['tex', 'z(l) = b_{0}\\,\\sinh^{-1}\\!\\left(l / b_{0}\\right)'],
+      ['p', 'At the throat the curve is vertical, then it flares. The flare is d²r/dl² = 1/b₀. Einstein’s equation turns that flare into a demand on the matter:'],
+      ['tex', '\\rho = -\\dfrac{c^{2} b_{0}^{2}}{8\\pi G r^{4}}'],
+      ['p', 'The density is negative. For a throat one astronomical unit across it is a few tonnes per cubic metre, about as dense as rock and with the wrong sign, and the tension is that density times c². A throat a person could walk through would need a negative density a couple of hundred million times nuclear. Nothing known supplies it. Because the redshift is zero, a clock on the ship and a clock in either universe agree, and light comes out the far side unshifted. The orange bead crosses the four-AU tunnel at a fifth of the speed of light. The drawing stretches the length of the tunnel by 2.40 so both mouths fit. The radii are the real embedding. The slider changes the throat, and the density falls as one over its square. The grid fades where the drawing stops. The tunnel keeps flaring past that.'],
     ];
     const root = document.getElementById('explain-body');
     for (let i = 0; i < blocks.length; i += 1) {
@@ -183,7 +189,7 @@ export class UI {
       const body = selectedBody(this.state);
       if (!body) return;
       applyMass(body, body.baseMassKg * sliderToRatio(this.mass.value));
-      this.massRead.textContent = formatMass(body.massKg);
+      this.paintMass(body);
       this.paintRange(this.mass);
       this.handlers.onMass();
       this.sync(this.state, true);
@@ -229,6 +235,18 @@ export class UI {
     input.style.background = `linear-gradient(90deg, #3dff9a ${pct}%, rgba(61,255,154,0.18) ${pct}%) center / 100% 3px no-repeat`;
   }
 
+  paintMass(body) {
+    if (body.kind === 'wormhole') {
+      this.massName.textContent = 'Throat radius';
+      this.massRead.textContent = formatLength(body.radiusM);
+      this.mass.setAttribute('aria-label', 'Throat radius');
+      return;
+    }
+    this.massName.textContent = `${body.name} mass`;
+    this.massRead.textContent = formatMass(body.massKg);
+    this.mass.setAttribute('aria-label', 'Selected mass');
+  }
+
   syncTimeLabel() {
     this.timeRead.textContent = `${this.state.timeScale.toFixed(2)}×`;
   }
@@ -264,8 +282,7 @@ export class UI {
     this.lock = true;
     this.mass.value = ratioToSlider(massRatio(body));
     this.lock = false;
-    this.massName.textContent = `${body.name} mass`;
-    this.massRead.textContent = formatMass(body.massKg);
+    this.paintMass(body);
     this.paintRange(this.mass);
     this.lastSignature = '';
     this.sync(this.state, true);

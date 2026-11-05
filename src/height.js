@@ -14,6 +14,8 @@
  * deviation laid on the sheet, not another bend in it.
  * The last-orbit preset does not change this height either. Its rings and
  * the plunging geodesic are drawn on the sheet.
+ * The wormhole preset does not use this height. Its sheet is a catenoid,
+ * built as its own mesh, with a throat that opens into a second universe.
  * The vertex shader in world.js must implement the same functions.
  * throatDepth 0 keeps the original shallow continuation (the lens preset).
  * A positive throatDepth, used by the black-hole preset, plunges inside the

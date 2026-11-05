@@ -19,6 +19,7 @@ import { updateLiveWave } from './waves.js';
 import { clearPrecessMarks, updateLivePrecess } from './precess.js';
 import { updateLiveIsco } from './isco.js';
 import { updateLiveTides } from './tides.js';
+import { updateLiveWorm } from './worm.js';
 
 const canvas = document.getElementById('scene');
 const loader = document.getElementById('loader');
@@ -344,6 +345,9 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === '-' || event.key === '_') {
     const button = ui.presets.querySelector('[data-preset="isco"]');
     if (button) button.click();
+  } else if (event.key === '=' || event.key === '+') {
+    const button = ui.presets.querySelector('[data-preset="wormhole"]');
+    if (button) button.click();
   }
 });
 
@@ -366,11 +370,12 @@ function frame(now) {
   updateLiveCones(state);
   updateLiveTides(state, dt);
   updateLiveIsco(state, dt);
+  updateLiveWorm(state, dt);
   world.sync(state, dt, before);
   world.updateCamera(dt);
   world.render();
   ui.sync(state);
-  const marked = world.coneLabel();
+  const marked = world.coneLabel() || world.wormLabel();
   if (marked) ui.setLabel(marked, marked.name);
   else ui.setLabel(world.labelPosition(selectedBody(state)), selectedBody(state)?.name ?? '');
   hideLoader();

@@ -16,6 +16,7 @@ import { dragMetrics } from './drag.js';
 import { lensMetrics } from './lens.js';
 import { precessMetrics } from './precess.js';
 import { WAVE_OBSERVER_MPC, waveMetrics } from './waves.js';
+import { WORM_STRETCH, wormMetrics } from './worm.js';
 
 function partnerOf(body, bodies) {
   let best = null;
@@ -82,7 +83,75 @@ function circularRatio(body, partner) {
   return Math.hypot(body.vx, body.vz) / vCirc;
 }
 
+function formatDensity(kgPerM3) {
+  if (!Number.isFinite(kgPerM3)) return '—';
+  const sign = kgPerM3 < 0 ? '−' : '';
+  const abs = Math.abs(kgPerM3);
+  if (abs >= 10000 || (abs > 0 && abs < 0.01)) return `${sign}${sci(abs, 3)} kg/m³`;
+  if (abs >= 100) return `${sign}${Math.round(abs)} kg/m³`;
+  return `${sign}${sci(abs, 3)} kg/m³`;
+}
+
+function wormSide(s) {
+  if (s > 0.28) return 'upper universe';
+  if (s < -0.28) return 'lower universe';
+  return 'the throat';
+}
+
+function wormFormulas(worm) {
+  const where = worm.lOverB0 >= 0 ? 'above' : 'below';
+  return [
+    {
+      key: 'worm-r',
+      title: 'Circumferential radius',
+      tex: 'r(l) = \\sqrt{b_{0}^{2} + l^{2}}',
+      value: formatLength(worm.b0),
+      note: `At the throat l is zero, so this is b₀. The ship is ${where} it, at ${worm.lOverB0.toFixed(2)} b₀, where the tunnel has opened to ${formatLength(worm.shipR)}. Far from the throat the radius grows like |l|.`,
+    },
+    {
+      key: 'worm-z',
+      title: 'Embedding of one slice',
+      tex: 'z(l) = b_{0}\\,\\sinh^{-1}\\!\\left(\\dfrac{l}{b_{0}}\\right)',
+      value: `×${worm.stretch.toFixed(2)} along the tunnel`,
+      note: `Proper distance and distance along this curve match, so the slice lies in the drawing without stretching. At the throat the curve is vertical. The flare there is d²r/dl² = 1/b₀, which is ${sci(worm.flare, 3)} per metre: the tunnel opens instead of pinching the way a horizon does. The drawing multiplies z by ${WORM_STRETCH.toFixed(2)} so both mouths fit. Radii are left alone.`,
+    },
+    {
+      key: 'worm-rho',
+      title: 'Energy density at the throat',
+      tex: '\\rho = -\\dfrac{c^{2} b_{0}^{2}}{8\\pi G r^{4}}',
+      value: formatDensity(worm.density),
+      note: `Negative. Einstein’s equation requires that wherever the tunnel flares outward. For this throat it is a few tonnes per cubic metre, about as dense as rock, with the wrong sign. The tension that holds the mouth open is that density times c², which is enormous. A throat one metre across would need ${sci(worm.nuclearRatio, 2)} times nuclear density, still negative. The slider changes b₀, and the density falls as 1/b₀².`,
+    },
+    {
+      key: 'worm-cross',
+      title: 'Crossing, and the redshift',
+      tex: '\\tau = \\dfrac{2 l_{\\max}}{\\beta c}, \\qquad e^{\\Phi} = 1',
+      value: formatDuration(worm.crossing),
+      note: `One crossing of the drawn tunnel, ${formatLength(worm.lengthM)} of proper length, at ${worm.beta.toFixed(1)} c. Φ = 0, so a clock on the ship and a clock in either universe stay in step, and light comes out the far side unshifted. The bead holds that proper speed. The pauses at the mouths, and the pace of the loop, belong to the animation.`,
+    },
+  ];
+}
+
+function wormReadout(worm) {
+  const side = wormSide(worm.lOverB0);
+  return {
+    kind: 'Wormhole',
+    name: 'Wormhole',
+    subtitle: `Ship at ${worm.lOverB0.toFixed(2)} b₀, in ${side}`,
+    stats: [
+      { label: 'Throat', value: formatLength(worm.b0), detail: 'radius b₀' },
+      { label: 'Tunnel', value: formatLength(worm.lengthM), detail: 'proper length' },
+      { label: 'Density', value: formatDensity(worm.density), detail: 'negative, at the throat' },
+      { label: 'Ship', value: `${worm.lOverB0.toFixed(2)} b₀`, detail: side },
+    ],
+    formulas: wormFormulas(worm),
+    motion: 'The grid is the tunnel. It narrows, stands vertical at the amber ring, and opens into a second universe. The orange bead is a ship crossing at constant proper speed, and the trail is the track behind it. Nothing here falls into a well. The throat stays open because the matter on it has negative energy.',
+    signature: 'worm-r|worm-z|worm-rho|worm-cross',
+  };
+}
+
 function kindLabel(body) {
+  if (body.kind === 'wormhole') return 'Wormhole';
   if (body.kind === 'blackhole') return 'Black hole';
   if (body.kind === 'neutron') return 'Neutron star';
   if (body.kind === 'star') return 'Star';
@@ -415,6 +484,8 @@ function waveFormulas(wave) {
 
 export function buildReadout(body, bodies, metersPerUnit) {
   if (!body) return null;
+  const worm = wormMetrics(bodies);
+  if (worm) return wormReadout(worm);
   const partner = partnerOf(body, bodies);
   const central = isCentral(body, partner);
   const rsSelf = schwarzschildRadius(body.massKg);

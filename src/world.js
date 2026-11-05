@@ -52,6 +52,15 @@ import {
 } from './tides.js';
 import { traceOrbitBackward } from './sim.js';
 import { liveWave } from './waves.js';
+import {
+  WORM_L,
+  WORM_PHI,
+  buildWormMesh,
+  cometSpan,
+  embedLifted,
+  liveWorm,
+  throatRing,
+} from './worm.js';
 
 const GRID_CELL = 2.15;
 const STYLE_ID = { generic: 0, mercury: 1, venus: 2, earth: 3, mars: 4 };
@@ -273,6 +282,63 @@ void main() {
   float ndv = abs(dot(N, V));
   float fres = pow(1.0 - ndv, 1.35);
   vec3 col = vColor * (0.22 + 0.28 * ndv + 0.85 * fres);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const WORM_VERT = /* glsl */ `
+attribute vec2 aCoord;
+varying float vS;
+varying float vPhi;
+varying vec3 vWorld;
+void main() {
+  vS = aCoord.x;
+  vPhi = aCoord.y;
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}
+`;
+
+const WORM_FRAG = /* glsl */ `
+varying float vS;
+varying float vPhi;
+varying vec3 vWorld;
+uniform float uL;
+
+void main() {
+  float cellP = 0.261799;
+  float gp = abs(fract(vPhi / cellP - 0.5) - 0.5);
+  float wp = min(max(fwidth(vPhi / cellP), 0.0016) * 1.2, 0.085);
+  float minorP = 1.0 - smoothstep(0.0, wp, gp);
+  float cellPM = cellP * 4.0;
+  float gpm = abs(fract(vPhi / cellPM - 0.5) - 0.5);
+  float wpm = min(max(fwidth(vPhi / cellPM) * 1.05, 0.004), 0.11);
+  float majorP = 1.0 - smoothstep(0.0, wpm, gpm);
+
+  float cellS = 0.28;
+  float gs = abs(fract(vS / cellS - 0.5) - 0.5);
+  float ws = min(max(fwidth(vS / cellS), 0.0016) * 1.2, 0.085);
+  float minorS = 1.0 - smoothstep(0.0, ws, gs);
+  float cellSM = cellS * 4.0;
+  float gsm = abs(fract(vS / cellSM - 0.5) - 0.5);
+  float wsm = min(max(fwidth(vS / cellSM) * 1.05, 0.004), 0.11);
+  float majorS = 1.0 - smoothstep(0.0, wsm, gsm);
+
+  float minor = max(minorP, minorS);
+  float major = max(majorP, majorS);
+  float line = minor * 0.7 + major;
+  float rim = 1.0 - smoothstep(uL * 0.68, uL * 0.99, abs(vS));
+  float distFade = 1.0 - smoothstep(48.0, 190.0, length(vWorld - cameraPosition));
+  float fade = rim * distFade;
+  float throat = 1.0 - smoothstep(0.0, 0.42, abs(vS));
+  float side = smoothstep(-0.4, 0.4, vS);
+  vec3 lower = vec3(0.22, 1.02, 0.58);
+  vec3 upper = vec3(0.16, 1.16, 0.38);
+  vec3 col = mix(lower, upper, side);
+  col = mix(col, vec3(0.78, 1.38, 0.95), throat * 0.72);
+  col *= line * fade * (0.82 + throat * 0.65);
+  if (line * fade < 0.03) discard;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -752,6 +818,7 @@ export class World {
     this._buildCones();
     this._buildTides();
     this._buildIsco();
+    this._buildWorm();
     this._buildComposer();
     this.resize();
   }
@@ -2269,6 +2336,8 @@ export class World {
       this.viewKey = key;
     }
     this.timeUniform.value += dt;
+    this.sheet.visible = !liveWorm.enabled;
+    this.controls.minDistance = liveWorm.enabled ? 1.6 : 6;
     this.starfield.rotation.y += dt * 0.012;
     const stars = [];
     for (let i = 0; i < state.bodies.length; i += 1) {
@@ -2343,6 +2412,14 @@ export class World {
       } else {
         view.trail.setVisible(false);
       }
+      if (body.kind === 'wormhole') {
+        view.mesh.visible = false;
+        view.glow.visible = false;
+        view.pick.visible = false;
+        if (view.corona) view.corona.visible = false;
+        if (view.clouds) view.clouds.visible = false;
+        view.trail.setVisible(false);
+      }
       if (body.kind === 'blackhole') blackHole = body;
     }
 
@@ -2356,6 +2433,7 @@ export class World {
     } else {
       this.ring.visible = false;
     }
+    if (liveWorm.enabled) this.ring.visible = false;
 
     const deepThroat = Boolean(blackHole) && (blackHole.throatDepth || 0) > 0;
     this.disk.visible = Boolean(blackHole);
@@ -2456,6 +2534,158 @@ export class World {
     } else if (this.iscoGroup) {
       this.iscoGroup.visible = false;
     }
+
+    if (liveWorm.enabled) {
+      this.disk.visible = false;
+      this.photon.visible = false;
+      this.sharpRing.visible = false;
+      this.tube.visible = false;
+      this.abyss.visible = false;
+      this.syncWorm();
+    } else if (this.wormGroup) {
+      this.wormGroup.visible = false;
+      this.wormShip.visible = false;
+    }
+  }
+
+  _buildWorm() {
+    this.wormGroup = new THREE.Group();
+    this.wormGroup.visible = false;
+    this.wormGroup.frustumCulled = false;
+    this.scene.add(this.wormGroup);
+    const data = buildWormMesh();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+    geo.setAttribute('aCoord', new THREE.BufferAttribute(data.coord, 2));
+    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    this.wormMat = new THREE.ShaderMaterial({
+      uniforms: { uL: { value: WORM_L } },
+      vertexShader: WORM_VERT,
+      fragmentShader: WORM_FRAG,
+      transparent: true,
+      depthWrite: true,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      extensions: { derivatives: true },
+    });
+    const mesh = new THREE.Mesh(geo, this.wormMat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    mesh.raycast = () => {};
+    this.wormGroup.add(mesh);
+
+    const ringGeo = new LineGeometry();
+    ringGeo.setPositions(throatRing());
+    this.wormRingMat = new LineMaterial({
+      color: 0xffb15a,
+      linewidth: 2.8,
+      transparent: true,
+      opacity: 0.96,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+    });
+    this.wormRingMat.userData.baseWidth = 2.8;
+    this.wormRing = new Line2(ringGeo, this.wormRingMat);
+    this.wormRing.frustumCulled = false;
+    this.wormRing.renderOrder = 4;
+    this.wormRing.raycast = () => {};
+    this.wormGroup.add(this.wormRing);
+
+    this.wormCometCount = 28;
+    this.wormCometPositions = new Float32Array(this.wormCometCount * 3);
+    this.wormCometColors = new Float32Array(this.wormCometCount * 3);
+    const cometGeo = new LineGeometry();
+    cometGeo.setPositions(this.wormCometPositions);
+    cometGeo.setColors(this.wormCometColors);
+    this.wormCometMat = new LineMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      linewidth: 3.3,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+    });
+    this.wormCometMat.userData.baseWidth = 3.3;
+    this.wormComet = new Line2(cometGeo, this.wormCometMat);
+    this.wormComet.frustumCulled = false;
+    this.wormComet.renderOrder = 5;
+    this.wormComet.raycast = () => {};
+    this.wormGroup.add(this.wormComet);
+    this.wormMaterials = [this.wormRingMat, this.wormCometMat];
+
+    this.wormShip = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.glowTexture,
+      color: new THREE.Color(1.55, 0.5, 0.14),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      opacity: 0.98,
+    }));
+    this.wormShip.frustumCulled = false;
+    this.wormShip.renderOrder = 6;
+    this.wormShip.raycast = () => {};
+    this.wormShip.visible = false;
+    this.scene.add(this.wormShip);
+  }
+
+  syncWorm() {
+    this.wormGroup.visible = true;
+    const b0 = liveWorm.b0;
+    this.wormGroup.position.set(liveWorm.cx, 0, liveWorm.cz);
+    this.wormGroup.scale.setScalar(b0);
+    const span = cometSpan(liveWorm.phase);
+    const count = this.wormCometCount;
+    const positions = this.wormCometPositions;
+    const colors = this.wormCometColors;
+    const flat = Math.abs(span.tail - span.s) < 0.02;
+    for (let i = 0; i < count; i += 1) {
+      const t = i / (count - 1);
+      const s = span.tail + (span.s - span.tail) * t;
+      const p = embedLifted(s, WORM_PHI, 0.15);
+      positions[i * 3] = p.x;
+      positions[i * 3 + 1] = p.y;
+      positions[i * 3 + 2] = p.z;
+      const fade = flat ? 0 : t * t;
+      colors[i * 3] = 1.25 * fade;
+      colors[i * 3 + 1] = 0.46 * fade;
+      colors[i * 3 + 2] = 0.12 * fade;
+    }
+    this.wormComet.geometry.setPositions(positions);
+    this.wormComet.geometry.setColors(colors);
+    this.wormComet.visible = !flat;
+    const ship = embedLifted(liveWorm.s, WORM_PHI, 0.18);
+    this.wormShip.visible = true;
+    this.wormShip.position.set(
+      liveWorm.cx + ship.x * b0,
+      ship.y * b0,
+      liveWorm.cz + ship.z * b0,
+    );
+    const size = Math.min(1.25, Math.max(0.42, b0 * 0.5));
+    this.wormShip.scale.set(size, size, 1);
+  }
+
+  wormLabel() {
+    if (!liveWorm.enabled) return null;
+    const b0 = liveWorm.b0;
+    const p = embedLifted(0, WORM_PHI, 0.25);
+    this._proj.set(liveWorm.cx + p.x * b0, p.y * b0 + 0.4, liveWorm.cz + p.z * b0);
+    this._proj.project(this.camera);
+    if (this._proj.z > 1) return null;
+    const width = this.canvas.clientWidth || window.innerWidth;
+    const height = this.canvas.clientHeight || window.innerHeight;
+    return {
+      x: (this._proj.x * 0.5 + 0.5) * width,
+      y: (-this._proj.y * 0.5 + 0.5) * height,
+      name: 'Throat',
+    };
   }
 
   _makeConeLine(positions, colors) {
@@ -2794,6 +3024,15 @@ export class World {
         const mat = this.iscoMaterials[i];
         mat.resolution.copy(this._viewSize);
         mat.linewidth = (mat.userData.baseWidth || 2.4) * (narrow ? 1.25 : 1);
+      }
+    }
+    if (this.wormMaterials) {
+      this.renderer.getSize(this._viewSize);
+      const narrow = Math.min(width, height) < 700;
+      for (let i = 0; i < this.wormMaterials.length; i += 1) {
+        const mat = this.wormMaterials[i];
+        mat.resolution.copy(this._viewSize);
+        mat.linewidth = (mat.userData.baseWidth || 2.8) * (narrow ? 1.3 : 1);
       }
     }
   }

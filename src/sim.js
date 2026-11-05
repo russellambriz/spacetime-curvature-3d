@@ -7,6 +7,7 @@ import { updateLiveDrag } from './drag.js';
 import { livePrecess, orbitElements, precessKick, resetLivePrecess } from './precess.js';
 import { resetLiveIsco, updateLiveIsco } from './isco.js';
 import { resetLiveTides, updateLiveTides } from './tides.js';
+import { resetLiveWorm, updateLiveWorm } from './worm.js';
 
 const GRAVITY_SOFT = 0.55;
 const GRAVITY_SOFT2 = GRAVITY_SOFT * GRAVITY_SOFT;
@@ -95,6 +96,7 @@ export function createState(presetId = 'sun-earth') {
     coneStation: null,
     tides: false,
     isco: false,
+    wormhole: false,
   };
 }
 
@@ -117,6 +119,7 @@ export function loadPreset(state, presetId) {
   state.coneStation = preset.cones ? 1 : null;
   state.tides = Boolean(preset.tides);
   state.isco = Boolean(preset.isco);
+  state.wormhole = Boolean(preset.wormhole);
   state.bodies = preset.bodies.map((spec) => createBody(spec));
   state.addedCount = 0;
   state.accumulator = 0;
@@ -125,6 +128,7 @@ export function loadPreset(state, presetId) {
   resetLivePrecess(state);
   resetLiveTides();
   resetLiveIsco();
+  resetLiveWorm();
   computeAccelerations(state.bodies);
   updateLiveWave(state);
   updateLiveLens(state);
@@ -132,6 +136,7 @@ export function loadPreset(state, presetId) {
   updateLiveCones(state);
   updateLiveTides(state, 0);
   updateLiveIsco(state, 0);
+  updateLiveWorm(state, 0);
   return state;
 }
 
@@ -143,6 +148,15 @@ export function applyMass(body, massKg) {
   const ratio = massKg / body.baseMassKg;
   body.massKg = massKg;
   body.simMass = body.baseSimMass * ratio;
+  if (body.kind === 'wormhole') {
+    body.massKg = massKg;
+    body.simMass = body.baseSimMass;
+    body.radius = Math.max(0.35, body.baseRadius * ratio);
+    body.radiusM = body.baseRadiusM * (body.radius / body.baseRadius);
+    body.visualStrength = 0;
+    body.softening = 1;
+    return;
+  }
   if (body.kind === 'blackhole') {
     body.displayHorizon = Math.max(0.08, body.baseHorizon * ratio);
     body.radius = body.displayHorizon * 0.92;
@@ -339,6 +353,9 @@ export function heaviest(bodies) {
 }
 
 export function addBody(state, x, z) {
+  if (state.wormhole) {
+    return { ok: false, reason: 'This sheet is the wormhole. Reset to put the masses back.' };
+  }
   if (state.bodies.length >= MAX_BODIES) {
     return { ok: false, reason: 'The sheet is holding twelve masses.' };
   }
